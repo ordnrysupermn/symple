@@ -279,8 +279,10 @@ int main(int argc, char* argv[]) {
             }
         }
     }
-    if(!p.create_build_directory())
+    if(!p.create_build_directory()) {
         std::println("Cannot create build directory");
+        return EXIT_FAILURE;
+    }
 
     auto cs = environment::detect_compilers(p.get_build_directory());
     if(cs.empty()) {
