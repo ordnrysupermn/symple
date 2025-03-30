@@ -9,4 +9,5 @@ Notes:
 Required local binaries:
 - clang++ (at the moment the only supported compiler)
 - touch (to update a file's write timestamp)
+- grep (because of lazyness)
 - nm (to check object files)
