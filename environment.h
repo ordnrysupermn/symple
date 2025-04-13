@@ -112,7 +112,7 @@ struct compiler {
     std::string name;
     std::filesystem::path install_directory;
     std::filesystem::path modules_directory;
-    using include_directories = std::list<std::filesystem::path>;
+    using include_directories = std::set<std::filesystem::path>;
     include_directories hlist;
     include_directories qlist;
     std::filesystem::path build_directory;

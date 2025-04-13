@@ -13,13 +13,13 @@ struct compiler_clang {
         compiler::include_directories hlist;
 
         static std::regex include_regex(std::string("^\\s*") + defaults::path_regex + "\\s*.*");
-        auto convert_and_add = [&](auto const&l, auto &list){
+        auto convert_and_add = [&](auto const&l, auto &container){
                 std::smatch m;
                 std::regex_match(l, m, include_regex);
                 if(m.size() != 2)
                     printlnv("Unrecognized include path: {:}", l.string());
                 else
-                    list.push_back(std::filesystem::weakly_canonical({m[1]}));
+                    container.insert(std::filesystem::weakly_canonical({m[1]}));
             };
         // TODO: with full ranges this code is just totally broken, i assume it has something with the istream interface
         // and ranges collaboration, probably needs further investigation
