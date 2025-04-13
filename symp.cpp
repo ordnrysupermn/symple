@@ -48,9 +48,9 @@ struct project {
         return true;
      }
 
-    static constexpr auto is_cpp_file = [](auto const& e){
-        return e.path().extension() == defaults::cpp_extension && e.is_regular_file();
-    };
+    static constexpr auto make_extension_filter(auto extension) {
+        return [extension](auto const& e) {return e.path().extension() == extension && e.is_regular_file();};
+    }
 
     using compilation_units = std::list<compilation_unit>;
 
@@ -66,12 +66,13 @@ struct project {
             } while(p != p.parent_path());
             return true;
         };
-        auto create_compilation_unit = [](auto const&p) {return compilation_unit{p};};
+        auto create_compilation_unit = [](auto const&p) {
+            return compilation_unit{p};};
         // get the compilation units of the filesystem
         compilation_units us{std::from_range,
                 std::filesystem::recursive_directory_iterator(this->root, std::filesystem::directory_options::skip_permission_denied)
                 | std::views::filter(no_symp_dir)
-                | std::views::filter(is_cpp_file)
+                | std::views::filter(make_extension_filter(defaults::cpp_extension))
                 | std::views::transform(&std::filesystem::directory_entry::path)
                 | std::views::transform(create_compilation_unit)
             };
