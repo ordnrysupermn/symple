@@ -10,7 +10,7 @@ struct compiler_clang {
         compiler::include_directories qlist;
         compiler::include_directories hlist;
 
-        static std::regex include_regex(std::string("^\\s*(") + defaults::path_regex + ")\\s*.*");
+        static std::regex include_regex(std::string("^\\s*") + defaults::path_regex + "\\s*.*");
         auto convert_and_add = [&](auto const&l, auto &list){
                 std::smatch m;
                 std::regex_match(l, m, include_regex);
@@ -51,7 +51,7 @@ struct compiler_clang {
 
     auto scan_info(std::filesystem::path p) {
         std::ifstream is(p);
-        std::regex bindir_regex(std::string("InstalledDir:\\s*(") + defaults::path_regex + ")\\s*.*");
+        std::regex bindir_regex(std::string("InstalledDir:\\s*") + defaults::path_regex + "\\s*.*");
         std::smatch m;
         auto i = std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l) {
                     return std::regex_match(l, m, bindir_regex);

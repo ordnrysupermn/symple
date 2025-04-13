@@ -24,7 +24,7 @@ namespace defaults {
     constexpr auto main_detect = "main_detect";
 
     // TODO: dirty hack, no space support
-    constexpr auto path_regex = "[+\\w\\d\\/\\.]+";
+    constexpr auto path_regex = "([^\\s\\\\]+)";
 };
 
 

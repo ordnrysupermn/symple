@@ -144,7 +144,7 @@ struct project {
         main_symbols ms;
         std::ifstream is(p);
         for(auto const&l: std::ranges::subrange(textfile::in_it(is), textfile::in_it())){
-            static std::regex regex(std::string("^(") + defaults::path_regex + "):.*"); 
+            static std::regex regex(std::string("^") + defaults::path_regex + ":.*"); 
             std::smatch m;
             std::regex_match(l, m, regex);
             if(m.size() == 2)
