@@ -2,18 +2,17 @@ import std;
 
 #include <cstdlib>
 
-
 #include "build.h"
 #include "conan.h"
 #include "config.h"
+#include "cpp.h"
 #include "defs.h"
 #include "environment.h"
-#include "tools.h"
+#include "textfile.h"
 
 using namespace compile;
 struct project {
     auto get_data_directory() const {return this->root / defaults::directory ;}
-
     auto get_build_directory() const {return this->root / defaults::directory / defaults::build_directory;}
 
     auto create_build_directory() {
@@ -120,9 +119,9 @@ struct project {
     // file, and then we just need to sum those files up
     // in this version we will always scan all the files, but it is not optimal
     auto scan_package_dependencies(auto const&compilation_units) {
-        std::list<textfile::package_dependency> data{std::from_range, compilation_units 
-                | std::views::transform([](auto const &u){
-                        return textfile::scan_package_dependency(u.input(), defaults::modules_search_depth);
+        std::list<cpp::package_dependency> data{std::from_range, compilation_units 
+                | std::views::transform([](auto const &u) {
+                        return cpp::scan_package_dependency(u.input(), defaults::modules_search_depth);
                 })
             };
         return data;

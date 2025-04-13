@@ -6,7 +6,7 @@ import std;
 #include "compile.h"
 #include "config.h"
 #include "defs.h"
-#include "tools.h"
+#include "textfile.h"
 
 namespace environment {
 
