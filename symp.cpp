@@ -149,42 +149,48 @@ struct project {
         }
         return cnts;
     }
-    auto create_conan_install_target(environment::compiler &c, auto const&conan_db, auto const&pds) {
-        auto cnts = create_conan_build_targets(conan_db, pds);
+    auto read_package_info(auto const&cnts) {
         std::list<std::filesystem::path> outputs{std::from_range, cnts
                     | std::views::transform([&](auto const&t) {return t.output;})};
+        std::list<conan::package_info> packages;
+        for(auto const&o: outputs) {
+            auto pi = conan_db.read_package_info(o);
+            if(pi)
+                packages.push_back(*pi);
+        }
+        return packages;
+    }
+    auto read_packages_compilation_data(auto const&conan_db, auto const&packages) {
+        std::list<std::string> include_prefixes{std::from_range, packages 
+            | std::views::transform([&](auto const&p){return p.name;})
+        };
+        std::set<std::filesystem::path> includes;
+        std::set<std::filesystem::path> libraries;
+        std::set<std::string> archives;
+        auto d = get_build_directory();
+
+        for(auto &p: std::ranges::subrange(std::filesystem::recursive_directory_iterator(d, std::filesystem::directory_options::skip_permission_denied), std::filesystem::recursive_directory_iterator())
+                | std::views::filter(make_extension_filter(defaults::cmake_extension))
+                | std::views::transform(&std::filesystem::directory_entry::path)
+           ) {
+            auto fs = conan_db.get_release_folders(p, include_prefixes);
+            auto is = conan_db.get_release_includes(fs, include_prefixes);
+            auto ls = conan_db.get_release_libraries(fs, include_prefixes);
+            std::ranges::copy(is, std::inserter(includes, std::begin(includes)));
+            std::ranges::copy(ls, std::inserter(libraries, std::begin(libraries)));
+            std::ranges::copy(include_prefixes, std::inserter(archives, std::begin(archives)));
+        }
+        return std::make_tuple(includes, libraries, archives);
+    }
+    auto create_conan_install_target(environment::compiler &c, auto const&conan_db, auto const&packages) {
+        std::list<conan::reference> references{std::from_range, packages 
+            | std::views::transform(&conan::package_info::reference)};
         auto o = get_build_directory() / defaults::conanfile;
         auto d = get_build_directory();
-        build::target cmt{o, [o, d, outputs, &c, &conan_db](){
-                std::list<conan::package_info> packages;
-                for(auto const&o: outputs) {
-                    auto pi = conan_db.read_package_info(o);
-                    if(pi)
-                        packages.push_back(*pi);
-                }
-                std::list<conan::reference> references{std::from_range, packages 
-                        | std::views::transform(&conan::package_info::reference)};
+        build::target cmt{o, [o, d, references, &conan_db](){
                 conan_db.generate_conanfile(o, references);
-                auto r = conan_db.install_packages(d, options::build_log);
-                if(r != EXIT_SUCCESS)
-                    return r;
-                std::list<std::string> include_prefixes{std::from_range, packages 
-                        | std::views::transform([&](auto const&p){return p.name;})
-                    };
-
-                for(auto &p: std::ranges::subrange(std::filesystem::recursive_directory_iterator(d, std::filesystem::directory_options::skip_permission_denied), std::filesystem::recursive_directory_iterator())
-                        | std::views::filter(make_extension_filter(defaults::cmake_extension))
-                        | std::views::transform(&std::filesystem::directory_entry::path)
-                    ) {
-                    auto fs = conan_db.get_release_folders(p, include_prefixes);
-                    auto is = conan_db.get_release_includes(fs, include_prefixes);
-                    std::ranges::copy(is, std::back_inserter(c.project_includes));
-                    auto ls = conan_db.get_release_libraries(fs, include_prefixes);
-                    std::ranges::copy(is, std::inserter(c.project_libraries, std::begin(c.project_libraries)));
-                    std::ranges::copy(include_prefixes, std::inserter(c.project_library_archives, std::begin(c.project_library_archives)));
-                }
-                return EXIT_SUCCESS;
-            }, cnts};
+                return conan_db.install_packages(d, options::build_log);
+             }};
         return cmt;
     }
 
@@ -306,9 +312,17 @@ struct project {
         auto cus = collect_compilation_units();
 
         auto pds = scan_package_dependencies(cus);
-        auto cts = create_conan_install_target(c, this->conan_db, pds);
+        auto cnts = create_conan_build_targets(this->conan_db, pds);
+        if(!build(cnts))
+            return false;
+
+        auto packages = read_package_info(cnts);
+
+        auto cts = create_conan_install_target(c, this->conan_db, packages);
         if(!build(cts))
             return false;
+        std::tie(c.project_includes, c.project_libraries, c.project_library_archives) = read_packages_compilation_data(this->conan_db, packages);
+
         auto dts = create_dependency_build_targets(c, cus);
         if(!build(dts))
             return false;
