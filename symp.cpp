@@ -224,13 +224,18 @@ struct project {
         return build::target{main, [c, main, objs]() {return c.link(main, objs);}, cuts};
     }
 
+    auto build(build_targets::value_type &t) {
+        auto r = t.build_if_needed();
+        if(r) {
+            textfile::cat(options::build_log);
+            return false;
+        }
+        return true;
+    }
     auto build(build_targets &ts) {
         for(auto &t: ts) {
-            auto r = t.build_if_needed();
-            if(r) {
-                textfile::cat(options::build_log);
+            if(!build(t))
                 return false;
-            }
         }
         return true;
     }
