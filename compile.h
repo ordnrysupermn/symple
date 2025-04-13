@@ -7,6 +7,7 @@ import std;
 namespace compile {
 
 struct fragment {
+    fragment() = default;
     fragment(std::string s) : value(s) {};
     std::string value;
 };
@@ -38,7 +39,7 @@ struct verbose : fragment {
     auto get() const {return this->value;}
 };
 struct compile_only : fragment {
-    compile_only() : fragment("") {}
+    compile_only() = default;
     auto get() const {return std::string("-c");}
 };
 struct custom : fragment {
@@ -52,6 +53,13 @@ struct std_lib : fragment {
 struct archive : fragment {
     using fragment::fragment;
     auto get() const {return std::string("-o ") + this->value;}
+};
+struct includes : fragment {
+    includes(auto const&includes) {
+        for(auto const&i: includes)
+            value += std::format("-I {:} ", i.string());
+    }
+    auto get() const {return this->value;}
 };
 
 inline auto append_extension(std::filesystem::path p, std::string ext) {
