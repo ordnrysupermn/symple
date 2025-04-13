@@ -66,14 +66,13 @@ struct compiler_clang {
         return std::make_tuple(id, md);
     }
 
-    auto redirect_to(auto const&p) {return std::string(">" + p.string() + " 2>&1");}
 
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
         compiler c{"clang++"};
 
         auto info_file = build_directory / defaults::compiler_info_file;
         build::target compiler_info_target{info_file, [&](){
-                return std::system((c.name + " --version " + redirect_to(info_file)).c_str());
+                return std::system((c.name + " --version " + os::redirect_to(info_file)).c_str());
             }};
         auto r = compiler_info_target.build_if_needed();
         if(WEXITSTATUS(r)) {
@@ -87,7 +86,7 @@ struct compiler_clang {
         test_output_file.replace_extension(defaults::object_extension);        
         auto details_file = build_directory / defaults::compiler_details_file;
         build::target compiler_test_target{test_file, [&]() {
-                return std::system((std::string("touch ") + test_file.string() + redirect_to(details_file)).c_str());
+                return std::system((std::string("touch ") + test_file.string() + os::redirect_to(details_file)).c_str());
             }};
 
         r = compiler_test_target.build_if_needed();
