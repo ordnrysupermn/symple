@@ -15,6 +15,8 @@ struct package_header {
         return (i != std::end(this->headers));
     }
     bool ignored() const {return (this->package_type == IGNORE);}
+    bool library() const {return (this->package_type == LIBRARY);}
+    bool header_only() const {return (this->package_type == HEADER_ONLY);}
 
     std::string name;
     header_files headers;
@@ -41,6 +43,12 @@ struct package_info {
 struct db {
     using package_data = std::vector<package_header>;
 
+    auto is_library(auto name) const {
+        auto i = std::ranges::find_if(this->headers, [&](auto const&h) {return h.name == name;});
+        if(i != std::end(this->headers))
+            return i->library();
+        return false;
+    }
     auto get_package_from_include(std::string include) const -> std::optional<conan::package_header> {
         auto i = std::ranges::find_if(this->headers, [&](auto const&h) {return h.contains_include(include);});
         if(i != std::end(this->headers))

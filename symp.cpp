@@ -162,11 +162,10 @@ struct project {
     }
     auto read_packages_compilation_data(auto const&conan_db, auto const&packages) {
         std::list<std::string> include_prefixes{std::from_range, packages 
-            | std::views::transform([&](auto const&p){return p.name;})
-        };
+                | std::views::transform([&](auto const&p){return p.name;})
+            };
         std::set<std::filesystem::path> includes;
         std::set<std::filesystem::path> libraries;
-        std::set<std::string> archives;
         auto d = get_build_directory();
 
         for(auto &p: std::ranges::subrange(std::filesystem::recursive_directory_iterator(d, std::filesystem::directory_options::skip_permission_denied), std::filesystem::recursive_directory_iterator())
@@ -178,7 +177,12 @@ struct project {
             auto ls = conan_db.get_release_libraries(fs, include_prefixes);
             std::ranges::copy(is, std::inserter(includes, std::begin(includes)));
             std::ranges::copy(ls, std::inserter(libraries, std::begin(libraries)));
-            std::ranges::copy(include_prefixes, std::inserter(archives, std::begin(archives)));
+        }
+        
+        std::set<std::string> archives;
+        for(auto const&p: packages) {
+            if(conan_db.is_library(p.name))
+                archives.insert(p.name);
         }
         return std::make_tuple(includes, libraries, archives);
     }
