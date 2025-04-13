@@ -345,6 +345,7 @@ int main(int argc, char* argv[]) {
 
     if(argc > 1) {
         for(auto s: std::span(argv, argc)
+                | std::views::drop(1)
                 | std::views::transform([](auto v){return std::string_view(v);})) {
             if(s == "clean") {
                 printlnv("Project cleanup is executed");
@@ -362,6 +363,7 @@ int main(int argc, char* argv[]) {
                 p.remove_binary();
                 p.remove_build_directory();
                 p.remove_data_directory();
+                build = false;
                 continue;
             }
             if(s == "--verbose" || s == "-v") {
