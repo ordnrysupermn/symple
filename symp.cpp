@@ -254,22 +254,30 @@ struct project {
 int main(int argc, char* argv[]) {
     std::filesystem::path root = ".";
     project p{root};
+    bool build = true;
 
     if(argc > 1) {
         for(auto s: std::span(argv, argc)
                 | std::views::transform([](auto v){return std::string_view(v);})) {
             if(s == "clean") {
+                printlnv("Project cleanup is executed");
                 p.remove_binary();
                 p.remove_build_directory();
-                return 0;
+                continue;
+            }
+            if(s == "--no-build") {
+                printlnv("No build is requested");
+                build = false;
+                continue;
             }
             if(s == "--wipe") {
+                printlnv("Project wipe is executed");
                 p.remove_binary();
                 p.remove_build_directory();
                 p.remove_data_directory();
-                return 0;
+                continue;
             }
-            if(s == "--verbose") {
+            if(s == "--verbose" || s == "-v") {
                 options::verbose = true;
                 continue;
             }
@@ -279,6 +287,9 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    if(!build)
+        return EXIT_SUCCESS;
+
     if(!p.create_build_directory()) {
         std::println("Cannot create build directory");
         return EXIT_FAILURE;
@@ -304,7 +315,6 @@ int main(int argc, char* argv[]) {
     print_includes(c.qlist);
     print_includes(c.hlist);
 
-    p.compile(c);
-    return EXIT_SUCCESS;
+    return (p.compile(c) ? EXIT_SUCCESS : EXIT_FAILURE);
 }
 
