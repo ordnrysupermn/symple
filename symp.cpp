@@ -1,9 +1,11 @@
 import std;
 
-#include <stdlib.h>
+#include <cstdlib>
 
+
+#include "build.h"
+#include "conan.h"
 #include "config.h"
-#include "compile.h"
 #include "defs.h"
 #include "environment.h"
 #include "tools.h"
@@ -126,6 +128,63 @@ struct project {
         return data;
     }
 
+    auto create_conan_build_targets(auto const&conan_db, auto const&package_dependencies) {
+        std::unordered_set<std::string> is{std::from_range, package_dependencies 
+                | std::views::transform([](auto const&d){return d.includes;})
+                | std::views::join
+            };
+        build_targets cnts;
+        for(auto const&i: is) {
+            auto p = conan_db.get_package_from_include(i);
+            if(!p) {
+                printlnv("Cound not find package for include: {:}", i);
+                continue;
+            }
+            auto o = get_build_directory() / append_extension(p->name, defaults::conan_extension);
+            cnts.push_back(build::target{o, [o, p, &conan_db]() {
+                return conan_db.get_package_info(p->name, o);}});
+        }
+        return cnts;
+    }
+    auto create_conan_install_target(environment::compiler &c, auto const&conan_db, auto const&pds) {
+        auto cnts = create_conan_build_targets(conan_db, pds);
+        std::list<std::filesystem::path> outputs{std::from_range, cnts
+                    | std::views::transform([&](auto const&t) {return t.output;})};
+        auto o = get_build_directory() / defaults::conanfile;
+        auto d = get_build_directory();
+        build::target cmt{o, [o, d, outputs, &c, &conan_db](){
+                std::list<conan::package_info> packages;
+                for(auto const&o: outputs) {
+                    auto pi = conan_db.read_package_info(o);
+                    if(pi)
+                        packages.push_back(*pi);
+                }
+                std::list<conan::reference> references{std::from_range, packages 
+                        | std::views::transform(&conan::package_info::reference)};
+                conan_db.generate_conanfile(o, references);
+                auto r = conan_db.install_packages(d, options::build_log);
+                if(r != EXIT_SUCCESS)
+                    return r;
+                std::list<std::string> include_prefixes{std::from_range, packages 
+                        | std::views::transform([&](auto const&p){return p.name;})
+                    };
+
+                for(auto &p: std::ranges::subrange(std::filesystem::recursive_directory_iterator(d, std::filesystem::directory_options::skip_permission_denied), std::filesystem::recursive_directory_iterator())
+                        | std::views::filter(make_extension_filter(defaults::cmake_extension))
+                        | std::views::transform(&std::filesystem::directory_entry::path)
+                    ) {
+                    auto fs = conan_db.get_release_folders(p, include_prefixes);
+                    auto is = conan_db.get_release_includes(fs, include_prefixes);
+                    std::ranges::copy(is, std::back_inserter(c.project_includes));
+                    auto ls = conan_db.get_release_libraries(fs, include_prefixes);
+                    std::ranges::copy(is, std::inserter(c.project_libraries, std::begin(c.project_libraries)));
+                    std::ranges::copy(include_prefixes, std::inserter(c.project_library_archives, std::begin(c.project_library_archives)));
+                }
+                return EXIT_SUCCESS;
+            }, cnts};
+        return cmt;
+    }
+
     auto create_module_build_targets(environment::compiler &c, auto const&package_dependencies) {
         
         std::unordered_set<std::filesystem::path> ms{std::from_range, package_dependencies 
@@ -221,7 +280,7 @@ struct project {
         auto main = mains.front().stem();
         std::list<std::filesystem::path> objs{std::from_range, cuts 
                 | std::views::transform([](auto const&t){return t.output;})};
-        return build::target{main, [c, main, objs]() {return c.link(main, objs);}, cuts};
+        return build::target{main, [c, main, objs]() {return c.link(main, objs, c.project_library_archives);}, cuts};
     }
 
     auto build(build_targets::value_type &t) {
@@ -244,6 +303,9 @@ struct project {
         auto cus = collect_compilation_units();
 
         auto pds = scan_package_dependencies(cus);
+        auto cts = create_conan_install_target(c, this->conan_db, pds);
+        if(!build(cts))
+            return false;
         auto dts = create_dependency_build_targets(c, cus);
         if(!build(dts))
             return false;
@@ -269,6 +331,7 @@ struct project {
         return true;
     }
     std::filesystem::path root;
+    conan::db conan_db;
 };
 
 

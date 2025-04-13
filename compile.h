@@ -61,6 +61,17 @@ struct includes : fragment {
     }
     auto get() const {return this->value;}
 };
+struct libraries : fragment {
+    libraries(auto const&libraries) {
+        for(auto const&l: libraries)
+            value += std::format("-L {:} ", l.string());
+    }
+    auto get() const {return this->value;}
+};
+struct library : fragment {
+    using fragment::fragment;
+    auto get() const {return std::string("-l") + this->value;}
+};
 
 inline auto append_extension(std::filesystem::path p, std::string ext) {
     p += ext;

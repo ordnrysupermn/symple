@@ -2,8 +2,10 @@
 
 import std;
 
-#include "config.h"
+#include "build.h"
 #include "compile.h"
+#include "config.h"
+#include "defs.h"
 #include "tools.h"
 
 namespace environment {
@@ -56,12 +58,15 @@ struct compiler {
         return c.spawn(get_build_log());
     }
 
-    auto link(std::filesystem::path t, std::list<std::filesystem::path> objects) const {
+    auto link(std::filesystem::path t, auto const&objects, auto const&libraries) const {
         compile::command c;
         c << compile::compiler(this->name);
+        c << compile::libraries(this->project_libraries);
         for(auto const&o: objects)
             c << compile::custom(o);
         c << compile::archive(t);
+        for(auto const&l: libraries)
+            c << compile::library(l);
         printlnv("Linking: {:}: {:}", t.string(), c.get());
         return c.spawn(options::build_log);
     }
@@ -112,6 +117,10 @@ struct compiler {
     include_directories qlist;
     std::filesystem::path build_directory;
     include_directories project_includes;
+    using library_directories = std::set<std::filesystem::path>;
+    library_directories project_libraries;
+    using library_archives = std::set<std::string>;
+    library_archives project_library_archives;
 };
 
 using available_compilers = std::list<compiler>;

@@ -1,5 +1,7 @@
-#include <regex>
-import std;
+import std;//almakorte
+
+#include <cstdlib>
+
 #include "config.h"
 #include "environment.h"
 

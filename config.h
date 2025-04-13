@@ -23,6 +23,12 @@ namespace defaults {
     constexpr auto dependency_extension = ".deps";
     constexpr auto main_detect = "main_detect";
 
+    constexpr auto conan_extension = ".conan";
+    constexpr auto cmake_extension = ".cmake";
+    constexpr auto conanfile = "conanfile.txt";
+    constexpr auto conan_library_folder = "lib";
+    constexpr auto conan_include_folder = "include";
+
     // TODO: dirty hack, no space support
     constexpr auto path_regex = "([^\\s\\\\]+)";
 };
