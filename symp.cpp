@@ -103,7 +103,7 @@ struct project {
             });
         return cuts;
     }
-    auto read_dependecies(environment::compiler &c, build_targets &cuts) {
+    auto read_file_dependecies(environment::compiler &c, build_targets &cuts) {
         for(auto &t: cuts) {
             auto deps = c.read_deps_file(t.dependencies.front().output);
             std::ranges::transform(std::begin(deps), std::end(deps), std::back_inserter(t.dependencies), [](auto const&p) {
@@ -112,19 +112,34 @@ struct project {
          }
     }
 
-    auto create_module_build_targets(environment::compiler &c, compilation_units &cus) {
-        std::unordered_set<std::filesystem::path> ms{std::from_range, cus
-                | std::views::transform([](auto u){return textfile::scan_modules(u.input(), defaults::modules_search_depth);})
+    // TODO: this scanning shall only be re-done if the file was changed, which
+    // means that it has to have an output file where we save the dependencies, similar to the .deps
+    // file, and then we just need to sum those files up
+    // in this version we will always scan all the files, but it is not optimal
+    auto scan_package_dependencies(auto const&compilation_units) {
+        std::list<textfile::package_dependency> data{std::from_range, compilation_units 
+                | std::views::transform([](auto const &u){
+                        return textfile::scan_package_dependency(u.input(), defaults::modules_search_depth);
+                })
+            };
+        return data;
+    }
+
+    auto create_module_build_targets(environment::compiler &c, auto const&package_dependencies) {
+        
+        std::unordered_set<std::filesystem::path> ms{std::from_range, package_dependencies 
+                | std::views::transform([](auto const&d){return d.modules;})
                 | std::views::join
             };
         build_targets mts{std::from_range, ms 
                 | std::views::transform([&](auto m) {
                     auto module_source = append_extension(m, defaults::module_extension);
                     auto ps = c.search_modules(module_source);
-                    auto o = c.build_directory / append_extension(m, defaults::precompiled_module_extension);
+                    auto o = get_build_directory() / append_extension(m, defaults::precompiled_module_extension);
                     if(ps.empty())
                         return build::target{o, [module_source]() {
-                                std::println("Could not find module source {:}", module_source.string());return EXIT_FAILURE;
+                                std::println("Could not find module source {:}", module_source.string());
+                                return EXIT_FAILURE;
                             }}; 
                     if(ps.size() > 1) {
                         std::println("Ambiguous module path:");
@@ -221,28 +236,28 @@ struct project {
 
     auto compile(environment::compiler &c) {
         auto cus = collect_compilation_units();
-        auto dts = create_dependency_build_targets(c, cus);
-        auto cuts = create_compilation_unit_build_targets(c, cus);
 
+        auto pds = scan_package_dependencies(cus);
+        auto dts = create_dependency_build_targets(c, cus);
         if(!build(dts))
             return false;
-        read_dependecies(c, cuts);
 
-        auto mts = create_module_build_targets(c, cus);
-
+       auto mts = create_module_build_targets(c, pds);
         if(!build(mts))
             return false;
 
-        if(!build(cuts))
+        auto cuts = create_compilation_unit_build_targets(c, cus);
+        read_file_dependecies(c, cuts);
+         if(!build(cuts))
             return false;
 
         auto mdt = create_main_detect_target();
-        if(mdt.build_if_needed())
+        if(!build(mdt))
             return false;
 
         auto main = create_main_target(c, cuts, mdt);
 
-        if(main.build_if_needed())
+        if(!build(main))
             return false;
 
         return true;
@@ -305,15 +320,17 @@ int main(int argc, char* argv[]) {
     auto c = cs.front();
     c.build_directory = p.get_build_directory();
     printlnv("Detected compiler is: {:}, installed to: {:}", c.name, c.install_directory.string());
-    auto print_includes = [](auto const&is) {
+    auto print_includes = [](std::string_view pfx, auto const&is) {
             if(is.empty())
                 return;
-            printlnv("Q includes:");
+            printlnv("Includes:");
+            // NOTE: this does not work with the current clang std
+            // printlnv(std::runtime_format(pfx));
             for(auto i: is)
                 printlnv("{:}", i.string());
         };
-    print_includes(c.qlist);
-    print_includes(c.hlist);
+    print_includes("Q includes", c.qlist);
+    print_includes("H includes", c.hlist);
 
     return (p.compile(c) ? EXIT_SUCCESS : EXIT_FAILURE);
 }

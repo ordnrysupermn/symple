@@ -26,14 +26,18 @@ struct compiler {
 
     auto create_dependencies(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::custom("-MM -MF") << compile::custom(o.string()) << compile::custom(i.string());
-        printlnv("Creating dependencies for file: {:}", i.string());
+        c << compile::compiler(this->name)
+            << compile::includes(this->project_includes)
+            << compile::custom("-MM -MF")
+            << compile::custom(o.string()) << compile::custom(i.string());
+        printlnv("Creating dependencies for file: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
     }
     auto compile_cpp(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
         c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard) << compile::std_lib(defaults::std_lib)
                 << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose) << compile::compile_only()
+                << compile::includes(this->project_includes)
                 << compile::custom(std::string("-fprebuilt-module-path=") + build_directory.string())
                 << compile::custom(i.string()) << compile::archive(o);
 
@@ -107,6 +111,7 @@ struct compiler {
     include_directories hlist;
     include_directories qlist;
     std::filesystem::path build_directory;
+    include_directories project_includes;
 };
 
 using available_compilers = std::list<compiler>;
