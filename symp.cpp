@@ -139,6 +139,10 @@ struct project {
                 printlnv("Cound not find package for include: {:}", i);
                 continue;
             }
+            if(p->ignored()) {
+                printlnv("Ignored include: {:}", i);
+                continue;
+            }
             auto o = get_build_directory() / append_extension(p->name, defaults::conan_extension);
             cnts.push_back(build::target{o, [o, p, &conan_db]() {
                 return conan_db.get_package_info(p->name, o);}});

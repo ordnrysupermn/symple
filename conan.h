@@ -14,12 +14,14 @@ struct package_header {
         auto i = std::ranges::find(this->headers, include);
         return (i != std::end(this->headers));
     }
+    bool ignored() const {return (this->package_type == IGNORE);}
 
     std::string name;
     header_files headers;
     enum {
         HEADER_ONLY,
-        LIBRARY
+        LIBRARY,
+        IGNORE,
     } package_type = HEADER_ONLY;
     std::string cmake_target = name;
 };
@@ -126,6 +128,7 @@ struct db {
     package_data headers = {
             {"cpp-httplib", {"httplib/httplib.h"}, package_header::HEADER_ONLY, {"httplib"}},
             {"ncurses", {"ncurses.h"}, package_header::LIBRARY},
+            {"cstdlib", {"cstdlib", "cstdlib.h"}, package_header::IGNORE},
         };
 };
 
