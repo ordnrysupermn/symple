@@ -10,10 +10,28 @@ import std;
 #include "environment.h"
 #include "textfile.h"
 
+auto append_containers(auto &a, auto &&b) {
+    a.insert(std::end(a), std::begin(b), std::end(b));
+    return a;
+}
+
 using namespace compile;
+struct filesystem {
+    auto search_modules(auto name) {
+        auto find_file = [&](auto const&e){return name.filename() == e.path().filename() && e.is_regular_file();};
+        std::list<std::filesystem::path> res{std::from_range,
+                std::filesystem::recursive_directory_iterator(this->root, std::filesystem::directory_options::skip_permission_denied)
+                | std::views::filter(find_file)
+                | std::views::transform(&std::filesystem::directory_entry::path)
+            };
+        return res;
+    }
+    std::filesystem::path root;
+};
+
 struct project {
-    auto get_data_directory() const {return this->root / defaults::directory ;}
-    auto get_build_directory() const {return this->root / defaults::directory / defaults::build_directory;}
+    auto get_data_directory() const {return this->files.root/defaults::directory;}
+    auto get_build_directory() const {return this->files.root/defaults::directory/defaults::build_directory;}
 
     auto create_build_directory() {
         auto d = get_data_directory();
@@ -28,7 +46,7 @@ struct project {
             if(!std::filesystem::create_directory(d))
                 return false;
         }
-        options::build_log = d / defaults::build_log;
+        options::build_log = d/defaults::build_log;
         printlnv("Build log is: {:}", options::build_log.string());
         return true;
     }
@@ -71,7 +89,7 @@ struct project {
             return compilation_unit{p};};
         // get the compilation units of the filesystem
         compilation_units us{std::from_range,
-                std::filesystem::recursive_directory_iterator(this->root, std::filesystem::directory_options::skip_permission_denied)
+                std::filesystem::recursive_directory_iterator(this->files.root, std::filesystem::directory_options::skip_permission_denied)
                 | std::views::filter(no_symp_dir)
                 | std::views::filter(make_extension_filter(defaults::cpp_extension))
                 | std::views::transform(&std::filesystem::directory_entry::path)
@@ -136,7 +154,7 @@ struct project {
         for(auto const&i: is) {
             auto p = conan_db.get_package_from_include(i);
             if(!p) {
-                printlnv("Cound not find package for include: {:}", i);
+                printlnv("Could not find package for include: {:}", i);
                 continue;
             }
             if(p->ignored()) {
@@ -208,6 +226,7 @@ struct project {
                 | std::views::transform([&](auto m) {
                     auto module_source = append_extension(m, defaults::module_extension);
                     auto ps = c.search_modules(module_source);
+                    append_containers(ps, files.search_modules(module_source));
                     auto o = get_build_directory() / append_extension(m, defaults::precompiled_module_extension);
                     if(ps.empty())
                         return build::target{o, [module_source]() {
@@ -351,7 +370,7 @@ struct project {
 
         return true;
     }
-    std::filesystem::path root;
+    filesystem files;
     conan::db conan_db;
 };
 
