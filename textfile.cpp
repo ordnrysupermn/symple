@@ -17,7 +17,6 @@ void cat(std::filesystem::path p, std::size_t max) {
 }
 
 int touch(std::filesystem::path p) {
-    std::println("touching: {:}", p.string());
     {
         std::ofstream os(p);
     }
