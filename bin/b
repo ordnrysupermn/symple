@@ -1,0 +1,10 @@
+# precompile the module
+clang++ -std=c++2b -stdlib=libc++ -Wno-reserved-identifier -Wno-reserved-module-identifier /usr/lib/llvm-19/share/libc++/v1/std.cppm --precompile -o ./.symp/std.pcm
+
+# compile user objects
+clang++ -std=c++2b -stdlib=libc++ textfile.cpp -fprebuilt-module-path=./.symp/ -c -o ./.symp/textfile.o
+clang++ -std=c++2b -stdlib=libc++ environment.cpp -fprebuilt-module-path=./.symp/ -c -o ./.symp/environment.o
+clang++ -std=c++2b -stdlib=libc++ symp.cpp -fprebuilt-module-path=./.symp/ -c -o ./.symp/symp.o
+
+#link
+clang++ -stdlib=libc++ ./.symp/std.pcm ./.symp/textfile.o ./.symp/symp.o ./.symp/environment.o -o ./symp 
