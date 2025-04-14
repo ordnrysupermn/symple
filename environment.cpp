@@ -88,7 +88,7 @@ struct compiler_clang {
         test_output_file.replace_extension(defaults::object_extension);        
         auto details_file = build_directory / defaults::compiler_details_file;
         build::target compiler_test_target{test_file, [&]() {
-                return std::system((std::string("touch ") + test_file.string() + os::redirect_to(details_file)).c_str());
+                return textfile::touch(test_file);
             }};
 
         r = compiler_test_target.build_if_needed();

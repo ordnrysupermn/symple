@@ -20,6 +20,7 @@ struct line : std::string {
 using in_it = std::istream_iterator<line>;
 
 void cat(std::filesystem::path p, std::size_t max = defaults::max_cat_lines);
+int touch(std::filesystem::path p);
 
 inline auto scan_lines_regex(auto name, auto regex) {
     std::list<std::smatch> matches;
