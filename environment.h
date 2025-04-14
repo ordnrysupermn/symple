@@ -60,7 +60,7 @@ struct compiler {
 
     auto link(std::filesystem::path t, auto const&objects, auto const&libraries) const {
         compile::command c;
-        c << compile::compiler(this->name);
+        c << compile::compiler(this->name) << compile::std_lib(defaults::std_lib);
         c << compile::libraries(this->project_libraries);
         for(auto const&o: objects)
             c << compile::custom(o);
