@@ -260,7 +260,7 @@ struct project {
         auto f = get_build_directory() / defaults::main_detect;
         build::target mdt{f, [this, f]() {
                 return std::system((std::string("nm --defined-only --print-file-name ") + get_build_directory().string()
-                    + "/*.o | grep -i \"t [_]*main\" " + environment::os::redirect_to(f)).c_str());
+                    + "/*.o | grep -i \"t\\s[_]*main\" " + environment::os::redirect_to(f)).c_str());
             }};
         // if we already have the file, add the contents as dependency so the build gets linked to it
         if(std::filesystem::exists(f)) {
