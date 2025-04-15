@@ -22,6 +22,11 @@ using in_it = std::istream_iterator<line>;
 void cat(std::filesystem::path p, std::size_t max = defaults::max_cat_lines);
 int touch(std::filesystem::path p);
 
+inline auto append_extension(std::filesystem::path p, std::string ext) {
+    p += ext;
+    return p;
+}
+
 inline auto scan_lines_regex(auto name, auto regex) {
     std::list<std::smatch> matches;
     std::regex r{regex};

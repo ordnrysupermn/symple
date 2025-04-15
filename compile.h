@@ -73,16 +73,5 @@ struct library : fragment {
     auto get() const {return std::string("-l") + this->value;}
 };
 
-inline auto append_extension(std::filesystem::path p, std::string ext) {
-    p += ext;
-    return p;
-}
-
-struct compilation_unit {
-    auto input() const {return this->path;}
-
-    std::filesystem::path path;
-};
-
 } // compile
 

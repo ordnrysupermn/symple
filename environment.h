@@ -22,6 +22,7 @@ struct compiler {
         compile::command c;
         c << compile::compiler(this->name) << compile::compile_only();
         (void)(c << ... <<args);
+
         printlnv("Compiler invoked: {:}", c.value);
         return c.spawn(build_log);
     }
@@ -32,6 +33,7 @@ struct compiler {
             << compile::includes(this->project_includes)
             << compile::custom("-MM -MF")
             << compile::custom(o.string()) << compile::custom(i.string());
+
         printlnv("Creating dependencies for file: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
     }
@@ -49,10 +51,10 @@ struct compiler {
     auto precompile_module(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
         c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard) << compile::std_lib(defaults::std_lib)
-                << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose) << compile::compile_only()
+                << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose)
+                << compile::custom(std::string("-fprebuilt-module-path=") + build_directory.string())
                 << compile::custom("--precompile")
                 << compile::custom(i.string()) << compile::archive(o);
-
 
         printlnv("Compiling: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
@@ -67,12 +69,13 @@ struct compiler {
         c << compile::archive(t);
         for(auto const&l: libraries)
             c << compile::library(l);
+
         printlnv("Linking: {:}: {:}", t.string(), c.get());
         return c.spawn(options::build_log);
     }
 
     using dependecy_files = std::list<std::filesystem::path>;
-    auto read_deps_file(std::filesystem::path p) {
+    static auto read_deps_file(std::filesystem::path p) {
         dependecy_files fs;
         std::ifstream is(p);
 
@@ -87,7 +90,7 @@ struct compiler {
         return fs;
     }
 
-    auto search_modules(std::filesystem::path p) {
+    auto find_module(std::filesystem::path p) {
         auto find_file = [&](auto const&e){return p.filename() == e.path().filename() && e.is_regular_file();};
         std::list<std::filesystem::path> res{std::from_range,
                 std::filesystem::recursive_directory_iterator(this->modules_directory, std::filesystem::directory_options::skip_permission_denied)

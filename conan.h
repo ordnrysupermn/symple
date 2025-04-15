@@ -118,6 +118,25 @@ struct db {
                 return std::string{};
         return i->cmake_target;
     }
+    auto read_packages_compilation_data(auto const&files, auto const&package_names) {
+        std::set<std::filesystem::path> includes;
+        std::set<std::filesystem::path> libraries;
+
+        for(auto const&p: files) {
+            auto fs = get_release_folders(p, package_names);
+            auto is = get_release_includes(fs, package_names);
+            auto ls = get_release_libraries(fs, package_names);
+            std::ranges::copy(is, std::inserter(includes, std::begin(includes)));
+            std::ranges::copy(ls, std::inserter(libraries, std::begin(libraries)));
+        }
+        
+        std::set<std::string> archives;
+        for(auto const&n: package_names) {
+            if(is_library(n))
+                archives.insert(n);
+        }
+        return std::make_tuple(includes, libraries, archives);
+    }
     auto install_packages(auto const&build_directory, auto build_log) const {
         // NOTE: this needs to be generated with our internal compiler settings
         printlnv("Generating conan profile");

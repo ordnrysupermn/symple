@@ -1,4 +1,4 @@
-import std;//almakorte
+import std; //almakorte
 
 #include <cstdlib>
 
@@ -51,7 +51,7 @@ struct compiler_clang {
         return std::make_tuple(qlist, hlist);
     }
 
-    auto scan_info(std::filesystem::path p) {
+    static auto scan_info(std::filesystem::path p) {
         std::ifstream is(p);
         std::regex bindir_regex(std::string("InstalledDir:\\s*") + defaults::path_regex + "\\s*.*");
         std::smatch m;
@@ -72,41 +72,45 @@ struct compiler_clang {
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
         compiler c{"clang++"};
 
-        auto info_file = build_directory / defaults::compiler_info_file;
-        build::target compiler_info_target{info_file, [&](){
-                return std::system((c.name + " --version " + os::redirect_to(info_file)).c_str());
-            }};
-        auto r = compiler_info_target.build_if_needed();
-        if(WEXITSTATUS(r)) {
-            printlnv("Compiler binary {:} not found", c.name);
-            return std::unexpected("Failed to detect binary");
-        }
-        std::tie(c.install_directory, c.modules_directory) = scan_info(info_file);
+        build::executor x;
 
-        auto test_file = build_directory / defaults::compiler_test_file;
+        auto info_file = build_directory/defaults::compiler_info_file;
+
+        x.add_build_command(info_file, [&](){
+                auto r = std::system(std::format("{:} --version {:}", c.name, os::redirect_to(info_file)).c_str());
+                if(WEXITSTATUS(r)) {
+                    printlnv("Compiler binary {:} not found", c.name);
+                    return r;
+                }
+                return EXIT_SUCCESS;
+            }, [&]() {
+                std::tie(c.install_directory, c.modules_directory) = scan_info(info_file);
+                return EXIT_SUCCESS;
+            });
+
+        auto test_file = build_directory/defaults::compiler_test_file;
         auto test_output_file = test_file;
         test_output_file.replace_extension(defaults::object_extension);        
-        auto details_file = build_directory / defaults::compiler_details_file;
-        build::target compiler_test_target{test_file, [&]() {
+        x.add_build_command(test_file, [&]() {
                 return textfile::touch(test_file);
-            }};
+            });
+        x.add_dependency(test_file, {info_file});
 
-        r = compiler_test_target.build_if_needed();
-        if(WEXITSTATUS(r)) {
-            printlnv("Cannot create compiler test file {:}", test_file.string());
-            return std::unexpected("Cannot create test file");
-        }
-        build::target compiler_details_target{details_file, [&]() {
-                return c.invoke(details_file, compile::custom("-x c++"),
+        auto details_file = build_directory/defaults::compiler_details_file;
+        x.add_build_command(details_file, [&]() {
+                auto r = c.invoke(details_file, compile::custom("-x c++"),
                     compile::verbose(true), compile::custom(test_file), compile::archive(test_output_file));
-            }, {compiler_test_target}};
+                if(WEXITSTATUS(r)) {
+                    printlnv("Compiler command returned an error, assuming invalid");
+                    return r;
+                }
+                std::tie(c.qlist, c.hlist) = scan_details(details_file);
+                return EXIT_SUCCESS; 
+            });
+        x.add_dependency(details_file, {test_file});
+        if(x.build())
+            return std::unexpected("Failed to detect compiler");
 
-        r = compiler_details_target.build_if_needed();
-        if(WEXITSTATUS(r)) {
-            printlnv("Compiler command returned an error, assuming invalid");
-            return std::unexpected("Failed to detect compiler details");
-        }
-        std::tie(c.qlist, c.hlist) = scan_details(details_file);
         return c;
     }
 };

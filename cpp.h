@@ -10,6 +10,11 @@ struct package_dependency {
     names includes;
 };
 
+struct compilation_unit {
+    std::filesystem::path path;
+    package_dependency dependencies;
+};
+
 inline auto scan_package_dependency(std::filesystem::path p, std::size_t depth) {
     package_dependency pd;
     std::ifstream is(p);

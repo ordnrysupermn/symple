@@ -1,3 +1,4 @@
+#include <filesystem>
 import std;
 
 #include <cstdlib>
@@ -10,244 +11,113 @@ import std;
 #include "environment.h"
 #include "textfile.h"
 
+namespace options {
+
+bool verbose = false;
+bool compile_verbose = false;
+bool dependency_verbose = false;
+std::filesystem::path build_log = defaults::build_log;
+
+} // options
+
 auto append_containers(auto &a, auto &&b) {
     a.insert(std::end(a), std::begin(b), std::end(b));
     return a;
 }
 
-using namespace compile;
-struct filesystem {
-    auto search_modules(auto name) {
+namespace filesystem {
+
+auto no_symp_dir = [](auto const&e) {
+    if(!e.is_directory())
+        return true;
+    auto p = std::filesystem::canonical(e.path());
+    do {
+        if(p.filename() == defaults::directory)
+            return false;
+        p = p.parent_path();
+    } while(p != p.parent_path());
+    return true;
+};
+static constexpr auto make_extension_filter(auto extension) {
+    return [extension](auto const& e) {return e.path().extension() == extension && e.is_regular_file();};
+}
+static constexpr auto make_extensions_filter(auto &&extensions) {
+    return [extensions](auto const& e) {return extensions.find(e.path().extension()) != std::end(extensions);};
+}
+struct directory {
+    using files = std::list<std::filesystem::path>;
+    auto find_file(auto name) {
         auto find_file = [&](auto const&e){return name.filename() == e.path().filename() && e.is_regular_file();};
-        std::list<std::filesystem::path> res{std::from_range,
+        files res{std::from_range,
                 std::filesystem::recursive_directory_iterator(this->root, std::filesystem::directory_options::skip_permission_denied)
                 | std::views::filter(find_file)
                 | std::views::transform(&std::filesystem::directory_entry::path)
             };
         return res;
     }
+    auto find_files2(auto ext) {
+        files fs{std::from_range,
+                std::filesystem::recursive_directory_iterator(this->root, std::filesystem::directory_options::skip_permission_denied)
+                | std::views::filter(no_symp_dir)
+                | std::views::filter(make_extensions_filter(ext))
+                | std::views::transform(&std::filesystem::directory_entry::path)
+            };
+        return fs;
+    }
+    auto find_files(auto ext) {
+        files fs{std::from_range,
+                std::filesystem::recursive_directory_iterator(this->root, std::filesystem::directory_options::skip_permission_denied)
+                | std::views::filter(no_symp_dir)
+                | std::views::filter(make_extension_filter(ext))
+                | std::views::transform(&std::filesystem::directory_entry::path)
+            };
+        return fs;
+    }
+    auto remove() {
+        if(std::filesystem::exists(this->root))
+            std::filesystem::remove_all(this->root);
+        return true;
+     }
     std::filesystem::path root;
 };
 
+struct build_directory : directory {
+    auto find_cmake_files() {return find_files(defaults::cmake_extension);}
+
+};
+struct project_directory : directory {
+    auto find_sources() {return find_files2(std::set<std::string>{defaults::cpp_extension, defaults::module_extension});}
+    auto find_modules() {return find_files(defaults::module_extension);}
+};
+struct data_directory : directory {
+};
+
+} // filesystem
+
 struct project {
-    auto get_data_directory() const {return this->files.root/defaults::directory;}
-    auto get_build_directory() const {return this->files.root/defaults::directory/defaults::build_directory;}
+    auto get_data_directory() const {return this->data_directory.root;}
+    auto get_build_directory() const {return this->build_directory.root;}
 
     auto create_build_directory() {
-        auto d = get_data_directory();
-        if(!std::filesystem::exists(d)) {
-            printlnv("Creating data directory: {:}", d.string());
-            if(!std::filesystem::create_directory(d))
-                return false;
-        }
-        d = get_build_directory();
-        if(!std::filesystem::exists(d)) {
-            printlnv("Creating build directory: {:}", d.string());
-            if(!std::filesystem::create_directory(d))
-                return false;
-        }
+        auto d = get_build_directory();
+        printlnv("Creating build directory: {:}", d.string());
+        std::filesystem::create_directories(d);
         options::build_log = d/defaults::build_log;
         printlnv("Build log is: {:}", options::build_log.string());
         return true;
     }
 
     auto remove_data_directory() {
-        const auto d = get_data_directory();
-        printlnv("Removing data directory: {:}", d.string());
-        if(std::filesystem::exists(d))
-            std::filesystem::remove_all(d);
-        return true;
-     }
-
+        printlnv("Removing data directory: {:}", this->data_directory.root.string());
+        return this->data_directory.remove();
+    }
     auto remove_build_directory() {
-        const auto d = get_build_directory();
-        printlnv("Removing build directory: {:}", d.string());
-        if(std::filesystem::exists(d))
-            std::filesystem::remove_all(d);
-        return true;
-     }
-
-    static constexpr auto make_extension_filter(auto extension) {
-        return [extension](auto const& e) {return e.path().extension() == extension && e.is_regular_file();};
-    }
-
-    using compilation_units = std::list<compilation_unit>;
-
-    auto collect_compilation_units() {
-        auto no_symp_dir = [](auto const&e) {
-            if(!e.is_directory())
-                return true;
-            auto p = std::filesystem::canonical(e.path());
-            do {
-                if(p.filename() == defaults::directory)
-                    return false;
-                p = p.parent_path();
-            } while(p != p.parent_path());
-            return true;
-        };
-        auto create_compilation_unit = [](auto const&p) {
-            return compilation_unit{p};};
-        // get the compilation units of the filesystem
-        compilation_units us{std::from_range,
-                std::filesystem::recursive_directory_iterator(this->files.root, std::filesystem::directory_options::skip_permission_denied)
-                | std::views::filter(no_symp_dir)
-                | std::views::filter(make_extension_filter(defaults::cpp_extension))
-                | std::views::transform(&std::filesystem::directory_entry::path)
-                | std::views::transform(create_compilation_unit)
-            };
-        return us;
-    }
-    using build_targets = std::list<build::target>;
-    auto create_dependency_build_targets(environment::compiler &c, compilation_units &cus) {
-        build_targets dts;
-        std::ranges::transform(cus, std::back_inserter(dts), [&](auto &u) {
-                auto input = u.path;
-                auto output = c.build_directory / u.path;
-                output.replace_extension(defaults::dependency_extension);
-                build::target t{output, [c, input, output]() {return c.create_dependencies(input, output);}};
-                t.dependencies.push_back({input});
-                return t;
-            });
-        return dts;
-    }
-    auto create_compilation_unit_build_targets(environment::compiler &c, compilation_units &cus) {
-        build_targets cuts;
-        std::ranges::transform(cus, std::back_inserter(cuts), [&](auto &u) {
-                auto i = u.path;
-                auto o = c.build_directory / u.path;
-                o.replace_extension(defaults::object_extension);
-                auto deps = o;
-                deps.replace_extension(defaults::dependency_extension);
-                build::target t{o, [c, i, o]() {return c.compile_cpp(i, o);}, {{deps}}};
-                return t;
-            });
-        return cuts;
-    }
-    auto read_file_dependecies(environment::compiler &c, build_targets &cuts) {
-        for(auto &t: cuts) {
-            auto deps = c.read_deps_file(t.dependencies.front().output);
-            std::ranges::transform(std::begin(deps), std::end(deps), std::back_inserter(t.dependencies), [](auto const&p) {
-                        return build::target{p};
-                    });
-         }
-    }
-
-    // TODO: this scanning shall only be re-done if the file was changed, which
-    // means that it has to have an output file where we save the dependencies, similar to the .deps
-    // file, and then we just need to sum those files up
-    // in this version we will always scan all the files, but it is not optimal
-    auto scan_package_dependencies(auto const&compilation_units) {
-        std::list<cpp::package_dependency> data{std::from_range, compilation_units 
-                | std::views::transform([](auto const &u) {
-                        return cpp::scan_package_dependency(u.input(), defaults::modules_search_depth);
-                })
-            };
-        return data;
-    }
-
-    auto create_conan_build_targets(auto const&conan_db, auto const&package_dependencies) {
-        std::unordered_set<std::string> is{std::from_range, package_dependencies 
-                | std::views::transform([](auto const&d){return d.includes;})
-                | std::views::join
-            };
-        build_targets cnts;
-        for(auto const&i: is) {
-            auto p = conan_db.get_package_from_include(i);
-            if(!p) {
-                printlnv("Could not find package for include: {:}", i);
-                continue;
-            }
-            if(p->ignored()) {
-                printlnv("Ignored include: {:}", i);
-                continue;
-            }
-            auto o = get_build_directory() / append_extension(p->name, defaults::conan_extension);
-            cnts.push_back(build::target{o, [o, p, &conan_db]() {
-                return conan_db.get_package_info(p->name, o);}});
-        }
-        return cnts;
-    }
-    auto read_package_info(auto const&cnts) {
-        std::list<std::filesystem::path> outputs{std::from_range, cnts
-                    | std::views::transform([&](auto const&t) {return t.output;})};
-        std::list<conan::package_info> packages;
-        for(auto const&o: outputs) {
-            auto pi = conan_db.read_package_info(o);
-            if(pi)
-                packages.push_back(*pi);
-        }
-        return packages;
-    }
-    auto read_packages_compilation_data(auto const&conan_db, auto const&packages) {
-        std::list<std::string> include_prefixes{std::from_range, packages 
-                | std::views::transform([&](auto const&p){return p.name;})
-            };
-        std::set<std::filesystem::path> includes;
-        std::set<std::filesystem::path> libraries;
-        auto d = get_build_directory();
-
-        for(auto &p: std::ranges::subrange(std::filesystem::recursive_directory_iterator(d, std::filesystem::directory_options::skip_permission_denied), std::filesystem::recursive_directory_iterator())
-                | std::views::filter(make_extension_filter(defaults::cmake_extension))
-                | std::views::transform(&std::filesystem::directory_entry::path)
-           ) {
-            auto fs = conan_db.get_release_folders(p, include_prefixes);
-            auto is = conan_db.get_release_includes(fs, include_prefixes);
-            auto ls = conan_db.get_release_libraries(fs, include_prefixes);
-            std::ranges::copy(is, std::inserter(includes, std::begin(includes)));
-            std::ranges::copy(ls, std::inserter(libraries, std::begin(libraries)));
-        }
-        
-        std::set<std::string> archives;
-        for(auto const&p: packages) {
-            if(conan_db.is_library(p.name))
-                archives.insert(p.name);
-        }
-        return std::make_tuple(includes, libraries, archives);
-    }
-    auto create_conan_install_target(environment::compiler &c, auto const&conan_db, auto const&packages) {
-        std::list<conan::reference> references{std::from_range, packages 
-            | std::views::transform(&conan::package_info::reference)};
-        auto o = get_build_directory() / defaults::conanfile;
-        auto d = get_build_directory();
-        build::target cmt{o, [o, d, references, &conan_db](){
-                conan_db.generate_conanfile(o, references);
-                return conan_db.install_packages(d, options::build_log);
-             }};
-        return cmt;
-    }
-
-    auto create_module_build_targets(environment::compiler &c, auto const&package_dependencies) {
-        
-        std::unordered_set<std::filesystem::path> ms{std::from_range, package_dependencies 
-                | std::views::transform([](auto const&d){return d.modules;})
-                | std::views::join
-            };
-        build_targets mts{std::from_range, ms 
-                | std::views::transform([&](auto m) {
-                    auto module_source = append_extension(m, defaults::module_extension);
-                    auto ps = c.search_modules(module_source);
-                    append_containers(ps, files.search_modules(module_source));
-                    auto o = get_build_directory() / append_extension(m, defaults::precompiled_module_extension);
-                    if(ps.empty())
-                        return build::target{o, [module_source]() {
-                                std::println("Could not find module source {:}", module_source.string());
-                                return EXIT_FAILURE;
-                            }}; 
-                    if(ps.size() > 1) {
-                        std::println("Ambiguous module path:");
-                        for(auto const&p: ps)
-                            std::println("{:}", p.string());
-                        std::println("Using {:}", ps.front().string());
-                    }
-                    auto i = ps.front();
-                    return build::target{o, [c, i, o]() {return c.precompile_module(i, o);}, {{i}}};
-                })
-            };
-        return mts;
+        printlnv("Removing build directory: {:}", this->build_directory.root.string());
+        return this->build_directory.remove();
     }
 
     using main_symbols = std::list<std::filesystem::path>;
-    auto read_main_symbol(std::filesystem::path p) {
+    static auto read_main_symbol(std::filesystem::path p) {
         main_symbols ms;
         std::ifstream is(p);
         for(auto const&l: std::ranges::subrange(textfile::in_it(is), textfile::in_it())){
@@ -261,7 +131,10 @@ struct project {
     }
 
     auto remove_binary() {
-        auto f = get_build_directory() / defaults::main_detect;
+        // TODO: probably there is a better way to identify it as this will fail
+        // in a broken compilation being cleaned up
+        // maybe the binary shall live in .symp and just sym-linked to the root
+        auto f = get_build_directory()/defaults::main_detect;
         if(std::filesystem::exists(f)) {
             auto mains = read_main_symbol(f);
 
@@ -275,109 +148,218 @@ struct project {
         return false;
     }
 
-    auto create_main_detect_target() {
-        auto f = get_build_directory() / defaults::main_detect;
-        build::target mdt{f, [this, f]() {
-                return std::system((std::string("nm --defined-only --print-file-name ") + get_build_directory().string()
-                    + "/*.o | grep -i \"t\\s[_]*main\" " + environment::os::redirect_to(f)).c_str());
-            }};
-        // if we already have the file, add the contents as dependency so the build gets linked to it
-        if(std::filesystem::exists(f)) {
-            auto mains = read_main_symbol(f);
-            // we have one real main
-            if(mains.size() == 1) {
-                mdt.dependencies.push_back({mains.front()});
-            }
-        }
-        return mdt;
+    static auto is_object(auto p) {
+        return (p.extension() == defaults::cpp_extension);
+    }
+    static auto is_module(auto p) {
+        return (p.extension() == defaults::module_extension);
     }
 
-    auto create_main_target(environment::compiler &c, build_targets const&cuts, build::target const&mdt) {
-        auto mains = read_main_symbol(mdt.output);
-        if(mains.empty()) {
-            return build::target{"", []() {
-                    std::println("No main symbol found in the project");
-                    return 1;
-                }};
-        }
-        if(mains.size() > 1) {
-            return build::target{"", [mains]() {
-                printv("Multiple main symbols found: ");
-                for(auto const&m: mains)
-                    printv("{:}", m.string());
-                printlnv();
-                return 1;
-            }};
-        }
-        auto main = mains.front().stem();
-        std::list<std::filesystem::path> objs{std::from_range, cuts 
-                | std::views::transform([](auto const&t){return t.output;})};
-        return build::target{main, [c, main, objs]() {return c.link(main, objs, c.project_library_archives);}, cuts};
+    auto compile_object(auto const&c, auto &x, auto source) {
+        auto object = get_build_directory()/source;
+        object.replace_extension(defaults::object_extension);
+        printlnv2("    Adding compile command {:}", object.string());
+        x.add_build_command(object, [source, object, &c](){return c.compile_cpp(source, object);});
+        x.add_dependency(object, source);
+        return object;
     }
-
-    auto build(build_targets::value_type &t) {
-        auto r = t.build_if_needed();
-        if(r) {
-            textfile::cat(options::build_log);
-            return false;
-        }
-        return true;
+    auto precompile_module(auto const&c, auto&x, auto source) {
+        auto pcm = get_build_directory()/source.filename().replace_extension(defaults::precompiled_module_extension);
+        printlnv2("    Adding precompile command {:}", pcm.string());
+        x.add_build_command(pcm, [source, pcm, &c]() {return c.precompile_module(source, pcm);});
+        x.add_dependency(pcm, source);
+        return pcm;
     }
-    auto build(build_targets &ts) {
-        for(auto &t: ts) {
-            if(!build(t))
-                return false;
-        }
-        return true;
+    auto compile_deps_file(auto const&c, auto&x, auto source, auto object) {
+        auto deps = get_build_directory()/source;
+        deps.replace_extension(defaults::dependency_extension);
+        printlnv2("    Adding deps build: {:}", deps.string());
+        x.add_build_command(deps, [source, deps, &c]() {
+                return c.create_dependencies(source, deps);
+                }, [object, deps, &x]() {
+                        x.add_dependency(object, environment::compiler::read_deps_file(deps));
+                        return EXIT_SUCCESS;
+                    });
+        x.add_dependency(deps, source);
+        return deps;
     }
 
     auto compile(environment::compiler &c) {
-        auto cus = collect_compilation_units();
+        const auto start = std::chrono::steady_clock::now();
+        build::executor x;
+        auto &conan_db = this->conan_db;
+        auto build_directory =  get_build_directory();
 
-        auto pds = scan_package_dependencies(cus);
-        auto cnts = create_conan_build_targets(this->conan_db, pds);
-        if(!build(cnts))
-            return false;
+        auto sources = this->directory.find_sources();
+        std::unordered_map<build::id, build::id> modules;
+        std::unordered_map<build::id, conan::package_header> packages;
+        std::set<build::id> objects;
+        auto conanfile = build_directory/defaults::conanfile;
+        auto main_detect = build_directory/defaults::main_detect;
 
-        auto packages = read_package_info(cnts);
+        print_id_containerv("Sources: ", sources);
 
-        auto cts = create_conan_install_target(c, this->conan_db, packages);
-        if(!build(cts))
-            return false;
-        std::tie(c.project_includes, c.project_libraries, c.project_library_archives) = read_packages_compilation_data(this->conan_db, packages);
+        while(sources.size()) {
+            auto source = sources.front();
+            sources.pop_front();
+            // create source build
+            printlnv2("Processing {:}", source.string());
+            auto object = compile_object(c, x, source);
+            x.add_dependency(main_detect, object);
+            objects.insert(object);
 
-        auto dts = create_dependency_build_targets(c, cus);
-        if(!build(dts))
-            return false;
+            build::id pcm;
+            if(is_module(source)) {
+                pcm = precompile_module(c, x, source);
+                x.add_dependency(object, pcm);
+            }
 
-       auto mts = create_module_build_targets(c, pds);
-        if(!build(mts))
-            return false;
+            // TODO: this scanning shall only be re-done if the file was changed, which
+            // means that it has to have an output file where we save the dependencies, similar to the .deps
+            // file, and then we just need to sum those files up
+            // in this version we will always scan all the files, but it is not optimal
+            auto pds = cpp::scan_package_dependency(source, defaults::modules_search_depth);
 
-        auto cuts = create_compilation_unit_build_targets(c, cus);
-        read_file_dependecies(c, cuts);
-         if(!build(cuts))
-            return false;
+            printlnv2("    Dependencies:");
+            for(auto m: pds.modules) {
+                auto module_source = textfile::append_extension(m, defaults::module_extension);
+                auto ps = this->directory.find_file(module_source);
+                bool external = false;
+                // module was not found locally, search in compiler path
+                if(ps.empty()) {
+                    ps = c.find_module(module_source);
+                    external = true;
+                }
+                // TODO: if the module not found, we shall probably search in conan for it as well
+                if(ps.empty()) {
+                    std::println("Could not find module source {:}", module_source.string());
+                    return false;
+                }
+                if(ps.size() > 1) {
+                    std::println("Ambiguous module path:");
+                    for(auto const&p: ps)
+                        std::println("{:}", p.string());
+                    std::println("Using {:}", ps.front().string());
+                }
+                module_source = ps.front();
+                auto dpcm = build_directory/textfile::append_extension(m, defaults::precompiled_module_extension);
+                printlnv2("        Adding dependent module: {:} -> {:}", object.string(), dpcm.string());
+                x.add_dependency(object, dpcm);
 
-        auto mdt = create_main_detect_target();
-        if(!build(mdt))
-            return false;
+                if(is_module(source)) {
+                    printlnv2("        Adding dependent module: {:} -> {:}", pcm.string(), dpcm.string());
+                    x.add_dependency(pcm, dpcm);
+                }
+                if(external) {
+                    auto [ignored, inserted] = modules.insert({module_source, dpcm});
+                    if(inserted)
+                        sources.push_back(module_source);
+                }
+            }
+            // BUG: external modules compile to their folder!
+            
+            // collect required conan packages
+            // NOTE: if we find any conan packages, we have to add the conanfile as dependency to the deps file
+            // to ensure that we have downloaded the packages before the compiler checks for it
+            bool has_conan = false;
+            for(auto i: pds.includes) {
+                auto p = conan_db.get_package_from_include(i);
+                if(!p || p->ignored())
+                    continue;
+                printlnv2("        Adding dependent package: {:} -> [{:}, {:}]", object.string(), p->name, i);
+                packages.insert({i, *p});
+                has_conan = true;
+            }
+            if(has_conan)
+                x.add_dependency(conanfile, source);
 
-        auto main = create_main_target(c, cuts, mdt);
+            // NOTE: dependency building seems to not work with pcm, need to further investigate
+            if(is_object(source)) {
+                auto deps = compile_deps_file(c, x, source, object);
+                x.add_dependency(object, deps);
+                if(has_conan)
+                    x.add_dependency(deps, conanfile);
+            }
 
-        if(!build(main))
-            return false;
+        }
+        if(!modules.empty())
+            print_link_containerv("External modules: ", modules);
 
-        return true;
+        if(!packages.empty())
+            print_link_containerv("Packages: ", packages);
+        std::unordered_set<build::id> conanfiles;
+        for(auto [i, h]: packages) {
+            printlnv2("Processing: {:}", i.string());
+            auto conan = build_directory/textfile::append_extension(i, defaults::conan_extension);
+            printlnv2("    Adding conan package: {:}", conan.string());
+            x.add_build_command(conan, [h, conan, &conan_db]() {return conan_db.get_package_info(h.name, conan);});
+            x.add_dependency(conanfile, conan);
+            conanfiles.insert(conan);
+        }
+        std::unordered_set<std::string> package_names{std::from_range, packages 
+                | std::views::transform([&](auto const&p){return p.second.name;})
+            };
+        if(!conanfiles.empty()) {
+            x.add_build_command(conanfile, [build_directory, conanfile, conanfiles, &conan_db](){
+                    std::list<conan::reference> references;
+                    for(auto const&c: conanfiles) {
+                        auto pi = conan_db.read_package_info(c);
+                        if(pi) {
+                            printlnv2("    Using reference: {:}", pi->reference());
+                            references.push_back(pi->reference());
+                        }
+                    }         
+                    conan_db.generate_conanfile(conanfile, references); 
+                    return conan_db.install_packages(build_directory, options::build_log);
+                }, [this, package_names, &conan_db, &c]() {
+                    auto files = this->build_directory.find_cmake_files();
+                    std::tie(c.project_includes, c.project_libraries, c.project_library_archives) = conan_db.read_packages_compilation_data(files, package_names);
+                    return EXIT_SUCCESS;
+                });
+        }
+        
+        x.add_build_command(main_detect, [main_detect, build_directory](){
+                return std::system(std::format("nm --defined-only --print-file-name {:}/*.o | grep -i \"t\\s[_]*main\" {:}", build_directory.string(), environment::os::redirect_to(main_detect)).c_str());
+            }, [this, main_detect, &objects, &c, &x](){
+                auto mains = read_main_symbol(main_detect);
+                if(mains.empty()) {
+                    std::println("Could not detect main symbol");
+                    return EXIT_FAILURE;
+                }
+                if(mains.size() > 1) {
+                    std::println("More than one main symbol found:");
+                    for(auto const&p: mains)
+                        std::println("{:}", p.string());
+                    return EXIT_FAILURE;
+                }           
+                auto main = mains.front().stem();
+                x.add_build_command(main, [main, &objects, &c]() {
+                        return c.link(main, objects, c.project_library_archives);
+                    });
+                x.add_dependency(main, main_detect);
+                return EXIT_SUCCESS;
+            });
+        // NOTE: we have to delay the scheduling of main as we do not know main at this point
+        // so just re-kick the build later
+        auto r = x.build();
+        if(r)
+            return false; 
+
+        const auto finish = std::chrono::steady_clock::now();
+        printlnv("Took {:} milliseconds", std::chrono::duration_cast<std::chrono::milliseconds>(finish - start));
+
+        return (r == EXIT_SUCCESS);
     }
-    filesystem files;
+    filesystem::project_directory directory;
+    filesystem::data_directory data_directory{directory.root/defaults::directory};
+    filesystem::build_directory build_directory{directory.root/defaults::directory/defaults::build_directory};
     conan::db conan_db;
 };
 
 
 int main(int argc, char* argv[]) {
     std::filesystem::path root = ".";
-    project p{root};
+    project p{{root}};
     bool build = true;
 
     if(argc > 1) {
@@ -405,6 +387,11 @@ int main(int argc, char* argv[]) {
             }
             if(s == "--verbose" || s == "-v") {
                 options::verbose = true;
+                continue;
+            }
+            if(s == "--verbose2" || s == "-vv") {
+                options::verbose = true;
+                options::dependency_verbose = true;
                 continue;
             }
             if(s == "--compile_verbose") {
