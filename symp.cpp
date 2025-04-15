@@ -377,7 +377,7 @@ int main(int argc, char* argv[]) {
                 build = false;
                 continue;
             }
-            if(s == "--wipe") {
+            if(s == "wipe") {
                 printlnv("Project wipe is executed");
                 p.remove_binary();
                 p.remove_build_directory();
