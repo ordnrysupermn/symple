@@ -156,6 +156,7 @@ struct db {
             {"cpp-httplib", {"httplib/httplib.h"}, package_header::HEADER_ONLY, {"httplib"}},
             {"ncurses", {"ncurses.h"}, package_header::LIBRARY},
             {"cstdlib", {"cstdlib", "cstdlib.h"}, package_header::IGNORE},
+            {"zlib", {"zlib.h"}, package_header::LIBRARY, {"z"}},
         };
 };
 
