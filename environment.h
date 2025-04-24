@@ -52,6 +52,7 @@ struct compiler {
         compile::command c;
         c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard) << compile::std_lib(defaults::std_lib)
                 << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose)
+                << compile::warnings("no-reserved-identifier") << compile::warnings("no-reserved-module-identifier")
                 << compile::custom(std::string("-fprebuilt-module-path=") + build_directory.string())
                 << compile::custom("--precompile")
                 << compile::custom(i.string()) << compile::archive(o);
