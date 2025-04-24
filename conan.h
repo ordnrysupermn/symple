@@ -133,7 +133,7 @@ struct db {
         std::set<std::string> archives;
         for(auto const&n: package_names) {
             if(is_library(n))
-                archives.insert(n);
+                archives.insert(get_package_cmake_target(n));
         }
         return std::make_tuple(includes, libraries, archives);
     }
