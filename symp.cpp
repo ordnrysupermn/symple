@@ -156,7 +156,7 @@ struct project {
     }
 
     auto compile_object(auto const&c, auto &x, auto source) {
-        auto object = get_build_directory()/source;
+        auto object = get_build_directory()/source.filename();
         object.replace_extension(defaults::object_extension);
         printlnv2("    Adding compile command {:}", object.string());
         x.add_build_command(object, [source, object, &c](){return c.compile_cpp(source, object);});
