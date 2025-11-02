@@ -26,6 +26,7 @@ auto append_containers(auto &a, auto &&b) {
 }
 
 namespace filesystem {
+    using files = std::unordered_set<std::filesystem::path>;
 
 auto no_symp_dir = [](auto const&e) {
     if(!e.is_directory())
@@ -204,6 +205,10 @@ struct project {
             sources.pop_front();
             // create source build
             printlnv2("Processing {:}", source.string());
+            if(this->ignored.contains(source)) {
+                printlnv("File is on the ignore list {:}", source.string());
+                continue;
+            }
             auto object = compile_object(c, x, source);
             x.add_dependency(main_detect, object);
             objects.insert(object);
@@ -354,6 +359,7 @@ struct project {
     filesystem::data_directory data_directory{directory.root/defaults::directory};
     filesystem::build_directory build_directory{directory.root/defaults::directory/defaults::build_directory};
     conan::db conan_db;
+    filesystem::files ignored;
 };
 
 
