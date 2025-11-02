@@ -322,11 +322,14 @@ struct project {
                     return EXIT_SUCCESS;
                 });
         }
+
+        bool run_binary = this->run_binary;
         
         x.add_build_command(main_detect, [main_detect, build_directory](){
                 auto cmd = std::format("nm --defined-only --print-file-name {:}/*.o {:}/.*.o | grep -i \"t\\s[_]*main\" {:}", build_directory.string(), build_directory.string(), environment::os::redirect_to(main_detect));
                 printlnv2("Detecting main: {:}", cmd);
                 return std::system(cmd.c_str());
+            }, [run_binary, main_detect, &objects, &c, &x](){
                 auto mains = read_main_symbol(main_detect);
                 if(mains.empty()) {
                     std::println("Could not detect main symbol");
@@ -341,6 +344,12 @@ struct project {
                 auto main = mains.front().stem();
                 x.add_build_command(main, [main, &objects, &c]() {
                         return c.link(main, objects, c.project_library_archives);
+                    }, [main, run_binary]() {
+                        if(!run_binary)
+                            return EXIT_SUCCESS;
+                        auto cmd = std::format("./{:}", main.string());
+                        printlnv("Executing main command: {:}", cmd);
+                        return std::system(cmd.c_str());             
                     });
                 x.add_dependency(main, main_detect);
                 return EXIT_SUCCESS;
@@ -361,6 +370,7 @@ struct project {
     filesystem::build_directory build_directory{directory.root/defaults::directory/defaults::build_directory};
     conan::db conan_db;
     filesystem::files ignored;
+    bool run_binary = true;
 };
 
 
@@ -400,6 +410,11 @@ int main(int argc, char* argv[]) {
             if(s == "--no-build") {
                 printlnv("No build is requested");
                 build = false;
+                continue;
+            }
+            if(s == "--no-run") {
+                printlnv("Skipping run");
+                p.run_binary = false;
                 continue;
             }
             if(s == "wipe") {
