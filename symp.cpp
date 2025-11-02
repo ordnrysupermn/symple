@@ -324,8 +324,9 @@ struct project {
         }
         
         x.add_build_command(main_detect, [main_detect, build_directory](){
-                return std::system(std::format("nm --defined-only --print-file-name {:}/*.o | grep -i \"t\\s[_]*main\" {:}", build_directory.string(), environment::os::redirect_to(main_detect)).c_str());
-            }, [this, main_detect, &objects, &c, &x](){
+                auto cmd = std::format("nm --defined-only --print-file-name {:}/*.o {:}/.*.o | grep -i \"t\\s[_]*main\" {:}", build_directory.string(), build_directory.string(), environment::os::redirect_to(main_detect));
+                printlnv2("Detecting main: {:}", cmd);
+                return std::system(cmd.c_str());
                 auto mains = read_main_symbol(main_detect);
                 if(mains.empty()) {
                     std::println("Could not detect main symbol");
