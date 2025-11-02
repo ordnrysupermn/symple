@@ -14,6 +14,7 @@ namespace defaults {
 
     constexpr auto directory = ".symp";
     constexpr auto build_directory = "build";
+    constexpr auto sympbang = ".symp_bang.cpp";
     constexpr std::size_t max_cat_lines = 20;
     constexpr std::size_t modules_search_depth = 50;
     constexpr auto build_log = "build.log";

@@ -367,11 +367,29 @@ int main(int argc, char* argv[]) {
     std::filesystem::path root = ".";
     project p{{root}};
     bool build = true;
+    std::string shebang;
+    bool shebang_arg = false;
+    std::string shebang_args;
+
 
     if(argc > 1) {
         for(auto s: std::span(argv, argc)
                 | std::views::drop(1)
                 | std::views::transform([](auto v){return std::string_view(v);})) {
+            // if its a filepath, then it must be coming from a shebang
+            if(std::filesystem::exists(s)) {
+                shebang = s;
+                shebang_arg = true;
+                continue;
+            }
+            if(s == "--") {
+                shebang_arg = false;
+                continue;
+            }
+            if(shebang_arg) {
+                shebang_args += s;
+                continue;
+            }
             if(s == "clean") {
                 printlnv("Project cleanup is executed");
                 p.remove_binary();
@@ -435,6 +453,15 @@ int main(int argc, char* argv[]) {
         };
     print_includes("Q includes", c.qlist);
     print_includes("H includes", c.hlist);
+
+    if(!shebang.empty()) {
+        printlnv("Shebang: {:}", shebang);
+        std::ifstream is(shebang);
+        std::ofstream os(defaults::sympbang);
+        for(auto const&l: std::ranges::subrange(textfile::in_it(is), textfile::in_it()) | std::views::drop(1))
+            os << l << std::endl;
+        p.ignored.insert(shebang);
+    }
 
     return (p.compile(c) ? EXIT_SUCCESS : EXIT_FAILURE);
 }
