@@ -256,9 +256,18 @@ struct project {
                     x.add_dependency(pcm, dpcm);
                 }
                 if(external) {
-                    auto [ignored, inserted] = modules.insert({module_source, dpcm});
-                    if(inserted)
-                        sources.push_back(module_source);
+                    // Check if this is a std.cppm or std.compat.cppm
+                    if(module_source.string().rfind("std.") != std::string::npos) {
+                        // For system modules, precompile to PCM but don't add to sources
+                        auto sys_pcm = precompile_module(c, x, module_source);
+                        printlnv2("        Precompiled system module: {:}", module_source.string());
+                    }
+                    else {
+                        // Regular external module - add to sources for compilation
+                        auto [ignored, inserted] = modules.insert({module_source, dpcm});
+                        if(inserted)
+                            sources.push_back(module_source);
+                    }
                 }
             }
             // BUG: external modules compile to their folder!
