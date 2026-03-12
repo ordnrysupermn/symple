@@ -130,6 +130,11 @@ struct project {
         }
         return ms;
     }
+    void remove_symp_bang() {
+        std::error_code ec;
+        std::filesystem::remove(defaults::sympbang, ec);
+    }
+
 
     auto remove_binary() {
         // TODO: probably there is a better way to identify it as this will fail
@@ -335,7 +340,7 @@ struct project {
         bool run_binary = this->run_binary;
         
         x.add_build_command(main_detect, [main_detect, build_directory](){
-                auto cmd = std::format("nm --defined-only --print-file-name {:}/*.o {:}/.*.o | grep -i \"t\\s[_]*main\" {:}", build_directory.string(), build_directory.string(), environment::os::redirect_to(main_detect));
+                auto cmd = std::format("nm --defined-only --print-file-name {:}/*.o {:}/.*.o 2> /dev/null | grep -i \"t\\s[_]*main\" {:}", build_directory.string(), build_directory.string(), environment::os::redirect_to(main_detect));
                 printlnv2("Detecting main: {:}", cmd);
                 return std::system(cmd.c_str());
             }, [run_binary, main_detect, &objects, &c, &x](){
@@ -414,6 +419,7 @@ int main(int argc, char* argv[]) {
                 printlnv("Project cleanup is executed");
                 p.remove_binary();
                 p.remove_build_directory();
+                p.remove_symp_bang();
                 continue;
             }
             if(s == "--no-build") {
@@ -431,6 +437,7 @@ int main(int argc, char* argv[]) {
                 p.remove_binary();
                 p.remove_build_directory();
                 p.remove_data_directory();
+                p.remove_symp_bang();
                 build = false;
                 continue;
             }
