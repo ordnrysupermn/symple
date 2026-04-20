@@ -363,7 +363,8 @@ struct project {
                             return EXIT_SUCCESS;
                         auto cmd = std::format("./{:}", main.string());
                         printlnv("Executing main command: {:}", cmd);
-                        return std::system(cmd.c_str());             
+                        std::system(cmd.c_str());
+                        return EXIT_SUCCESS;
                     });
                 x.add_dependency(main, main_detect);
                 return EXIT_SUCCESS;
