@@ -2,6 +2,8 @@
 import std;
 
 #include <cstdlib>
+#include <csignal>
+#include <sys/wait.h>
 
 #include "build.h"
 #include "conan.h"
@@ -17,12 +19,17 @@ bool verbose = false;
 bool compile_verbose = false;
 bool dependency_verbose = false;
 std::filesystem::path build_log = defaults::build_log;
+bool interrupted = false;
 
 } // options
 
 auto append_containers(auto &a, auto &&b) {
     a.insert(std::end(a), std::begin(b), std::end(b));
     return a;
+}
+
+void interrupt_handler(int sig) {
+    options::interrupted = true;
 }
 
 namespace filesystem {
@@ -359,11 +366,17 @@ struct project {
                 x.add_build_command(main, [main, &objects, &c]() {
                         return c.link(main, objects, c.project_library_archives);
                     }, [main, run_binary]() {
-                        if(!run_binary)
+                        if (!run_binary)
                             return EXIT_SUCCESS;
                         auto cmd = std::format("./{:}", main.string());
                         printlnv("Executing main command: {:}", cmd);
-                        return std::system(cmd.c_str());             
+                        int rc = std::system(cmd.c_str());
+                        if (rc != EXIT_SUCCESS) {
+                            std::println(
+                                "Program exited with code {:}, ignored by build",
+                                rc);
+                        }
+                        return EXIT_SUCCESS;   // never fail the build
                     });
                 x.add_dependency(main, main_detect);
                 return EXIT_SUCCESS;
@@ -371,7 +384,7 @@ struct project {
         // NOTE: we have to delay the scheduling of main as we do not know main at this point
         // so just re-kick the build later
         auto r = x.build();
-        if(r)
+        if(r || options::interrupted)
             return false; 
 
         const auto finish = std::chrono::steady_clock::now();
@@ -389,6 +402,9 @@ struct project {
 
 
 int main(int argc, char* argv[]) {
+    // Install signal handler to gracefully handle interrupts (Ctrl+C)
+    std::signal(SIGINT, interrupt_handler);
+    
     std::filesystem::path root = ".";
     project p{{root}};
     bool build = true;
@@ -486,7 +502,9 @@ int main(int argc, char* argv[]) {
     print_includes("Q includes", c.qlist);
     print_includes("H includes", c.hlist);
 
-    if(!shebang.empty()) {            printlnv("Shebang: {:}", shebang);
+    if(!shebang.empty()) {
+        printlnv("Shebang: {:}", shebang);
+        std::ifstream is(shebang);
         std::ofstream os(defaults::sympbang);
         for(auto const&l: std::ranges::subrange(textfile::in_it(is), textfile::in_it()) | std::views::drop(1))
             os << l << std::endl;

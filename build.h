@@ -24,18 +24,23 @@ struct dependency_graph {
 struct command {
     using lambda = std::function<int()>;
 
+    // keep the result of the last completion
+    int complete_result = EXIT_SUCCESS;
+
     auto execute() {
         this->done = false;
+        this->complete_result = EXIT_SUCCESS;
         return main();
     }
 
     auto complete() {
-        if(this->done)
-            return EXIT_SUCCESS;
+        if (this->done)
+            return this->complete_result;
         this->done = true;
-        if(!post)
-            return EXIT_SUCCESS;
-        return post();
+        if (!post)
+            return this->complete_result;
+        this->complete_result = post();
+        return this->complete_result;
     }
 
     lambda main;
@@ -118,6 +123,8 @@ struct executor {
         return all_ready(d->second);
     }
     auto build(auto &v) {
+        if(options::interrupted)
+            return EXIT_FAILURE;
         printlnv2("Selected: {:}", v.first.string());
         if(needs_build(v.first)) {
             printlnv2("Building: {:}", v.first.string());
@@ -129,11 +136,20 @@ struct executor {
                 textfile::cat(options::build_log);
                 return r;
             }
+            if(options::interrupted)
+                return EXIT_FAILURE;
         }
         printlnv2("Completing {:}", v.first.string());
-        if(v.second.complete()) {
-            std::println("Post build step failed: {:}", v.first.string());
+        if(options::interrupted)
             return EXIT_FAILURE;
+        int cr = v.second.complete();
+        if (cr != EXIT_SUCCESS) {
+           if (interrupted) {
+            return EXIT_FAILURE; // Do not print the error message
+        }
+        std::cout << "Post build step failed (code {:}): {:}" 
+                  << cr << v.first.string() << std::endl;
+        return cr; // propagate the real code
         }
         return EXIT_SUCCESS;
     }
