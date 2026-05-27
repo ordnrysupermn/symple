@@ -486,9 +486,7 @@ int main(int argc, char* argv[]) {
     print_includes("Q includes", c.qlist);
     print_includes("H includes", c.hlist);
 
-    if(!shebang.empty()) {
-        printlnv("Shebang: {:}", shebang);
-        std::ifstream is(shebang);
+    if(!shebang.empty()) {            printlnv("Shebang: {:}", shebang);
         std::ofstream os(defaults::sympbang);
         for(auto const&l: std::ranges::subrange(textfile::in_it(is), textfile::in_it()) | std::views::drop(1))
             os << l << std::endl;
