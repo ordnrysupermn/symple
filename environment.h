@@ -30,6 +30,7 @@ struct compiler {
     auto create_dependencies(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
         c << compile::compiler(this->name)
+            << compile::std_standard(defaults::std_standard)
             << compile::includes(this->project_includes)
             << compile::custom("-MM -MF")
             << compile::custom(o.string()) << compile::custom(i.string());

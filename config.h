@@ -3,7 +3,7 @@
 import std;
 
 namespace defaults {
-    constexpr auto std_standard = "c++2b";
+    constexpr auto std_standard = "c++23";
     constexpr auto std_lib = "libc++";
     constexpr auto warnings = "all";
 

@@ -131,8 +131,9 @@ struct executor {
             }
         }
         printlnv2("Completing {:}", v.first.string());
-        if(v.second.complete()) {
-            std::println("Post build step failed: {:}", v.first.string());
+        auto r = v.second.complete();
+        if(r != EXIT_SUCCESS) {
+            std::println("Post build step failed: {:}, result: {:}", v.first.string(), r);
             return EXIT_FAILURE;
         }
         return EXIT_SUCCESS;

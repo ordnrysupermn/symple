@@ -140,7 +140,7 @@ struct db {
     auto install_packages(auto const&build_directory, auto build_log) const {
         // NOTE: this needs to be generated with our internal compiler settings
         printlnv("Generating conan profile");
-        auto r = std::system(std::format("conan profile detect --force {:}", environment::os::redirect_to(build_log)).c_str());
+        auto r = std::system(std::format("conan profile detect --exist-ok {:}", environment::os::redirect_to(build_log)).c_str());
         if(r != EXIT_SUCCESS)
             return r;
         auto cmd = std::format("conan install {:} --output-folder={:} --build=missing {:}"
@@ -157,7 +157,8 @@ struct db {
             {"ncurses", {"ncurses.h"}, package_header::LIBRARY},
             {"cstdlib", {"cstdlib", "cstdlib.h"}, package_header::IGNORE},
             {"zlib", {"zlib.h"}, package_header::LIBRARY, {"z"}},
-            {"mio", {"mio/mio.hpp", "mio/mmap.hpp"}, package_header::HEADER_ONLY} 
+            {"mio", {"mio/mio.hpp", "mio/mmap.hpp"}, package_header::HEADER_ONLY},
+            {"fast_io", {"fast_io.h"}, package_header::HEADER_ONLY}
         };
 };
 
