@@ -33,6 +33,7 @@ namespace defaults {
     // TODO: dirty hack, no space support
     constexpr auto path_regex = "([^\\s\\\\]+)";
     
+    constexpr auto gcc_name = "g++-16";
     constexpr auto clang_name = "clang++";
     constexpr auto default_compiler = "clang";
 };

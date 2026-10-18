@@ -133,6 +133,16 @@ struct compiler_clang {
     }
 };
 
+struct compiler_gcc {
+    auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
+        compiler c{defaults::gcc_name};
+        return c;
+    }
+
+
+
+};
+
 
 available_compilers detect_compilers(std::filesystem::path build_directory, std::string_view compiler_name) {
     available_compilers cs;
@@ -145,6 +155,8 @@ available_compilers detect_compilers(std::filesystem::path build_directory, std:
     };
     if(compiler_name == "clang")
         detect(compiler_clang{});
+    else if(compiler_name == "gcc")
+        detect(compiler_gcc{});
     return cs;
 }
 

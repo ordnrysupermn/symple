@@ -139,7 +139,7 @@ struct project {
     auto remove_binary() {
         // TODO: probably there is a better way to identify it as this will fail
         // in a broken compilation being cleaned up
-        for(auto compiler_name: {defaults::clang_name}) {
+        for(auto compiler_name: {defaults::clang_name, defaults::gcc_name}) {
             auto f = get_build_directory()/compiler_name/defaults::main_detect;
             if(std::filesystem::exists(f)) {
                 auto mains = read_main_symbol(f);
@@ -422,7 +422,7 @@ int main(int argc, char* argv[]) {
             }
             if(s == "--compiler") {
                 if(i + 1 >= argc) {
-                    std::println("Missing compiler name after --compiler (expected clang)");
+                    std::println("Missing compiler name after --compiler (expected clang or gcc)");
                     return EXIT_FAILURE;
                 }
                 compiler_name = argv[++i];
@@ -469,14 +469,14 @@ int main(int argc, char* argv[]) {
             }
         }
     }
-    if(compiler_name != "clang") {
-        std::println("Unsupported compiler: {:} (expected clang)", compiler_name);
+    if(compiler_name != "clang" && compiler_name != "gcc") {
+        std::println("Unsupported compiler: {:} (expected clang or gcc)", compiler_name);
         return EXIT_FAILURE;
     }
     if(!build)
         return EXIT_SUCCESS;
 
-    p.build_directory.root /= (defaults::clang_name);
+    p.build_directory.root /= (compiler_name == "clang" ? defaults::clang_name : defaults::gcc_name);
 
     if(!p.create_build_directory()) {
         std::println("Cannot create build directory");
