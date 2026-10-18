@@ -115,7 +115,17 @@ struct compiler_clang {
     }
 };
 
-using supported_compilers = std::tuple<compiler_clang>;
+struct compiler_gcc {
+    auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
+        compiler c{"g++-16"};
+        return c;
+    }
+
+
+
+};
+
+using supported_compilers = std::tuple<compiler_clang, compiler_gcc>;
 
 available_compilers detect_compilers(std::filesystem::path build_directory) {
     available_compilers cs;
