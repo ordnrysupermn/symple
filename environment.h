@@ -40,22 +40,32 @@ struct compiler {
     }
     auto compile_cpp(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard) << compile::std_lib(defaults::std_lib)
-                << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose) << compile::compile_only()
+        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard);
+        c << compile::custom(this->standard_library_flag);
+        c << compile::warnings(defaults::warnings) << compile::verbose(options::compile_verbose) << compile::compile_only()
                 << compile::includes(this->project_includes)
-                << compile::custom(std::string("-fprebuilt-module-path=") + build_directory.string())
-                << compile::custom(i.string()) << compile::archive(o);
+                << compile::custom(this->module_flag);
+        if(!this->module_search_path_flag.empty())
+            c << compile::custom(this->module_search_path_flag + build_directory.string());
+        c << compile::custom(i.string()) << compile::archive(o);
 
         printlnv("Compiling: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
     }
     auto precompile_module(std::filesystem::path i, std::filesystem::path o) const {
+        if(this->module_precompile_flag.empty()) {
+            printlnv("Module precompilation is not supported by {:}", this->name);
+            return EXIT_FAILURE;
+        }
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard) << compile::std_lib(defaults::std_lib)
-                << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose)
-                << compile::warnings("no-reserved-identifier") << compile::warnings("no-reserved-module-identifier")
-                << compile::custom(std::string("-fprebuilt-module-path=") + build_directory.string())
-                << compile::custom("--precompile")
+        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard)
+                << compile::custom(this->standard_library_flag)
+                << compile::warnings(defaults::warnings) << compile::verbose(options::compile_verbose)
+                << compile::custom(this->precompile_warning_flags)
+                << compile::custom(this->module_flag);
+        if(!this->module_search_path_flag.empty())
+            c << compile::custom(this->module_search_path_flag + build_directory.string());
+        c << compile::custom(this->module_precompile_flag)
                 << compile::custom(i.string()) << compile::archive(o);
 
         printlnv("Compiling: {:}: {:}", i.string(), c.get());
@@ -64,7 +74,8 @@ struct compiler {
 
     auto link(std::filesystem::path t, auto const&objects, auto const&libraries) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_lib(defaults::std_lib);
+        c << compile::compiler(this->name);
+        c << compile::custom(this->standard_library_flag);
         c << compile::libraries(this->project_libraries);
         for(auto const&o: objects)
             c << compile::custom(o);
@@ -115,6 +126,11 @@ struct compiler {
     }
 
     std::string name;
+    std::string standard_library_flag;
+    std::string module_flag;
+    std::string module_search_path_flag;
+    std::string module_precompile_flag;
+    std::string precompile_warning_flags;
     std::filesystem::path install_directory;
     std::filesystem::path modules_directory;
     using include_directories = std::set<std::filesystem::path>;

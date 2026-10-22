@@ -71,6 +71,10 @@ struct compiler_clang {
 
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
         compiler c{"clang++"};
+        c.standard_library_flag = "-stdlib=" + std::string(defaults::std_lib);
+        c.module_search_path_flag = "-fprebuilt-module-path=";
+        c.module_precompile_flag = "--precompile";
+        c.precompile_warning_flags = "-Wno-reserved-identifier -Wno-reserved-module-identifier";
 
         build::executor x;
 
@@ -165,7 +169,7 @@ struct compiler_gcc {
         std::ifstream is(p);
         std::regex install_regex(std::string("install:\\s*") + defaults::path_regex + "\\s*.*");
         std::smatch m;
-        std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l) {
+        auto i = std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l) {
                     return std::regex_match(l, m, install_regex);
                 });
         if(m.size() != 2) {
@@ -229,8 +233,10 @@ available_compilers detect_compilers(std::filesystem::path build_directory) {
     available_compilers cs;
     std::apply([&](auto c) {
             auto r = c.detect(build_directory);
-            if(r)
+            if(r) {
+                printlnv("Detected compiler: {:}", r->name);
                 cs.push_back(*r);
+            }
         }, supported_compilers{});
     return cs;
 }
