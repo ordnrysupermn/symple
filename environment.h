@@ -31,6 +31,7 @@ struct compiler {
         compile::command c;
         c << compile::compiler(this->name)
             << compile::std_standard(defaults::std_standard)
+            << compile::custom(this->module_flag)
             << compile::includes(this->project_includes)
             << compile::custom("-MM -MF")
             << compile::custom(o.string()) << compile::custom(i.string());
@@ -45,6 +46,8 @@ struct compiler {
         c << compile::warnings(defaults::warnings) << compile::verbose(options::compile_verbose) << compile::compile_only()
                 << compile::includes(this->project_includes)
                 << compile::custom(this->module_flag);
+        if(!this->module_source_flag.empty())
+            c << compile::custom(this->module_source_flag);
         if(!this->module_search_path_flag.empty())
             c << compile::custom(this->module_search_path_flag + build_directory.string());
         c << compile::custom(i.string()) << compile::archive(o);
@@ -60,13 +63,21 @@ struct compiler {
         compile::command c;
         c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard)
                 << compile::custom(this->standard_library_flag)
-                << compile::warnings(defaults::warnings) << compile::verbose(options::compile_verbose)
-                << compile::custom(this->precompile_warning_flags)
                 << compile::custom(this->module_flag);
+        if(this->native_std_module && i == "std") {
+            c << compile::custom(this->std_module_compile_flag);
+            printlnv("Compiling standard module: {:}", c.get());
+            return c.spawn(get_build_log());
+        }
+        c << compile::warnings(defaults::warnings) << compile::verbose(options::compile_verbose)
+                << compile::custom(this->precompile_warning_flags);
+        if(!this->module_source_flag.empty())
+            c << compile::custom(this->module_source_flag);
         if(!this->module_search_path_flag.empty())
             c << compile::custom(this->module_search_path_flag + build_directory.string());
-        c << compile::custom(this->module_precompile_flag)
-                << compile::custom(i.string()) << compile::archive(o);
+        c << compile::custom(this->module_precompile_flag) << compile::custom(i.string());
+        if(this->module_precompile_output)
+            c << compile::archive(o);
 
         printlnv("Compiling: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
@@ -105,12 +116,39 @@ struct compiler {
 
     auto find_module(std::filesystem::path p) {
         auto find_file = [&](auto const&e){return p.filename() == e.path().filename() && e.is_regular_file();};
-        std::list<std::filesystem::path> res{std::from_range,
-                std::filesystem::recursive_directory_iterator(this->modules_directory, std::filesystem::directory_options::skip_permission_denied)
+        std::list<std::filesystem::path> res;
+        auto search_directory = [&](auto const&directory, bool recursive) {
+            if(!std::filesystem::is_directory(directory))
+                return;
+            auto candidate = directory/p.filename();
+            if(std::filesystem::is_regular_file(candidate))
+                res.push_back(std::move(candidate));
+            if(!recursive)
+                return;
+            auto files = std::filesystem::recursive_directory_iterator(
+                    directory, std::filesystem::directory_options::skip_permission_denied)
                 | std::views::filter(find_file)
-                | std::views::transform(&std::filesystem::directory_entry::path)
-            };
+                | std::views::transform(&std::filesystem::directory_entry::path);
+            std::ranges::copy(files, std::back_inserter(res));
+        };
+        for(auto const&directory: this->hlist) {
+            auto is_cpp_include = directory.filename().string().starts_with("c++");
+            search_directory(directory, is_cpp_include);
+        }
+        if(!this->modules_directory.empty() && std::filesystem::exists(this->modules_directory)) {
+            search_directory(this->modules_directory, true);
+        }
+        res.sort();
+        res.unique();
         return res;
+    }
+
+    auto module_artifact_path(std::filesystem::path module) const {
+        if(module.extension() == defaults::module_extension)
+            module.replace_extension(this->module_artifact_extension);
+        else
+            module += this->module_artifact_extension;
+        return this->module_artifact_directory/module;
     }
 
     auto search_includes(std::filesystem::path p) {
@@ -131,6 +169,12 @@ struct compiler {
     std::string module_search_path_flag;
     std::string module_precompile_flag;
     std::string precompile_warning_flags;
+    std::string module_source_flag;
+    std::string module_artifact_extension = defaults::precompiled_module_extension;
+    std::filesystem::path module_artifact_directory;
+    bool module_precompile_output = true;
+    bool native_std_module = false;
+    std::string std_module_compile_flag;
     std::filesystem::path install_directory;
     std::filesystem::path modules_directory;
     using include_directories = std::set<std::filesystem::path>;

@@ -116,6 +116,13 @@ struct project {
         printlnv("Removing build directory: {:}", this->build_directory.root.string());
         return this->build_directory.remove();
     }
+    auto remove_module_cache() {
+        std::error_code ec;
+        std::filesystem::remove_all("gcm.cache", ec);
+        if(ec)
+            std::println("Failed to remove GCC module cache: {:}", ec.message());
+        return !ec;
+    }
 
     using main_symbols = std::list<std::filesystem::path>;
     static auto read_main_symbol(std::filesystem::path p) {
@@ -170,11 +177,14 @@ struct project {
         return object;
     }
     auto precompile_module(auto const&c, auto&x, auto source) {
-        auto pcm = get_build_directory()/source.filename().replace_extension(defaults::precompiled_module_extension);
-        printlnv2("    Adding precompile command {:}", pcm.string());
-        x.add_build_command(pcm, [source, pcm, &c]() {return c.precompile_module(source, pcm);});
-        x.add_dependency(pcm, source);
-        return pcm;
+        std::filesystem::path module_source{source};
+        auto module_artifact = c.module_artifact_path(module_source.filename());
+        printlnv2("    Adding precompile command {:}", module_artifact.string());
+        x.add_build_command(module_artifact, [module_source, module_artifact, &c]() {
+                return c.precompile_module(module_source, module_artifact);
+            });
+        x.add_dependency(module_artifact, module_source);
+        return module_artifact;
     }
     auto compile_deps_file(auto const&c, auto&x, auto source, auto object) {
         auto deps = get_build_directory()/source;
@@ -232,6 +242,15 @@ struct project {
 
             printlnv2("    Dependencies:");
             for(auto m: pds.modules) {
+                if(c.native_std_module && m == "std") {
+                    auto module_artifact = precompile_module(c, x, "std");
+                    printlnv2("        Compiling GCC standard module: {:}", module_artifact.string());
+                    x.add_dependency(object, module_artifact);
+                    if(is_module(source))
+                        x.add_dependency(pcm, module_artifact);
+                    continue;
+                }
+
                 auto module_source = textfile::append_extension(m, defaults::module_extension);
                 auto ps = this->directory.find_file(module_source);
                 bool external = false;
@@ -252,13 +271,13 @@ struct project {
                     std::println("Using {:}", ps.front().string());
                 }
                 module_source = ps.front();
-                auto dpcm = build_directory/textfile::append_extension(m, defaults::precompiled_module_extension);
-                printlnv2("        Adding dependent module: {:} -> {:}", object.string(), dpcm.string());
-                x.add_dependency(object, dpcm);
+                auto module_artifact = c.module_artifact_path(m);
+                printlnv2("        Adding dependent module: {:} -> {:}", object.string(), module_artifact.string());
+                x.add_dependency(object, module_artifact);
 
                 if(is_module(source)) {
-                    printlnv2("        Adding dependent module: {:} -> {:}", pcm.string(), dpcm.string());
-                    x.add_dependency(pcm, dpcm);
+                    printlnv2("        Adding dependent module: {:} -> {:}", pcm.string(), module_artifact.string());
+                    x.add_dependency(pcm, module_artifact);
                 }
                 if(external) {
                     // Check if this is a std.cppm or std.compat.cppm
@@ -269,7 +288,7 @@ struct project {
                     }
                     else {
                         // Regular external module - add to sources for compilation
-                        auto [ignored, inserted] = modules.insert({module_source, dpcm});
+                        auto [ignored, inserted] = modules.insert({module_source, module_artifact});
                         if(inserted)
                             sources.push_back(module_source);
                     }
@@ -420,6 +439,7 @@ int main(int argc, char* argv[]) {
                 printlnv("Project cleanup is executed");
                 p.remove_binary();
                 p.remove_build_directory();
+                p.remove_module_cache();
                 p.remove_symp_bang();
                 continue;
             }
@@ -437,6 +457,7 @@ int main(int argc, char* argv[]) {
                 printlnv("Project wipe is executed");
                 p.remove_binary();
                 p.remove_build_directory();
+                p.remove_module_cache();
                 p.remove_data_directory();
                 p.remove_symp_bang();
                 build = false;
@@ -498,4 +519,3 @@ int main(int argc, char* argv[]) {
 
     return (p.compile(c) ? EXIT_SUCCESS : EXIT_FAILURE);
 }
-

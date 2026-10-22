@@ -75,6 +75,7 @@ struct compiler_clang {
         c.module_search_path_flag = "-fprebuilt-module-path=";
         c.module_precompile_flag = "--precompile";
         c.precompile_warning_flags = "-Wno-reserved-identifier -Wno-reserved-module-identifier";
+        c.module_artifact_directory = build_directory;
 
         build::executor x;
 
@@ -183,6 +184,14 @@ struct compiler_gcc {
 
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
         compiler c{"g++-16"};
+        c.module_flag = "-fmodules-ts";
+        c.module_precompile_flag = "-fmodule-only";
+        c.module_source_flag = "-x c++";
+        c.module_artifact_extension = ".gcm";
+        c.module_artifact_directory = "gcm.cache";
+        c.module_precompile_output = false;
+        c.native_std_module = true;
+        c.std_module_compile_flag = "--compile-std-module";
 
         build::executor x;
 
