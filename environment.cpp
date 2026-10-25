@@ -8,6 +8,8 @@ import std; //almakorte
 namespace environment {
 
 struct compiler_clang {
+    constexpr auto compiler_name = "clang";
+    constexpr auto compiler_info_file = compiler_name + "_compiler_info";
     auto scan_details(std::filesystem::path p) {
         compiler::include_directories qlist;
         compiler::include_directories hlist;
@@ -70,7 +72,7 @@ struct compiler_clang {
 
 
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
-        compiler c{"clang++"};
+        compiler c{compiler_name};
         c.standard_library_flag = "-stdlib=" + std::string(defaults::std_lib);
         c.module_search_path_flag = "-fprebuilt-module-path=";
         c.module_precompile_flag = "--precompile";
@@ -121,6 +123,8 @@ struct compiler_clang {
 };
 
 struct compiler_gcc {
+    constexpr auto compiler_name = "g++";
+    constexpr auto compiler_info_file = compiler_name + "_compiler_info";
     auto scan_details(std::filesystem::path p) {
         compiler::include_directories qlist;
         compiler::include_directories hlist;
@@ -183,7 +187,7 @@ struct compiler_gcc {
     }
 
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
-        compiler c{"g++-16"};
+        compiler c{compiler_name};
         c.module_flag = "-fmodules-ts";
         c.module_precompile_flag = "-fmodule-only";
         c.module_source_flag = "-x c++";

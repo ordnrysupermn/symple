@@ -19,7 +19,6 @@ namespace defaults {
     constexpr std::size_t modules_search_depth = 50;
     constexpr auto build_log = "build.log";
     constexpr auto compiler_test_file = "t.test";
-    constexpr auto compiler_info_file = "compiler_info";
     constexpr auto compiler_details_file = "compiler_details";
     constexpr auto dependency_extension = ".deps";
     constexpr auto main_detect = "main_detect";
