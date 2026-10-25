@@ -162,30 +162,31 @@ struct compiler {
             };
         return res;
     }
-
-    std::string name;
-    std::string standard_library_flag;
-    std::string module_flag;
-    std::string module_search_path_flag;
-    std::string module_precompile_flag;
-    std::string precompile_warning_flags;
-    std::string module_source_flag;
-    std::string module_artifact_extension = defaults::precompiled_module_extension;
-    std::filesystem::path module_artifact_directory;
-    bool module_precompile_output = true;
-    bool native_std_module = false;
-    std::string std_module_compile_flag;
-    std::filesystem::path install_directory;
-    std::filesystem::path modules_directory;
-    using include_directories = std::set<std::filesystem::path>;
-    include_directories hlist;
-    include_directories qlist;
-    std::filesystem::path build_directory;
-    include_directories project_includes;
-    using library_directories = std::set<std::filesystem::path>;
-    library_directories project_libraries;
-    using library_archives = std::set<std::string>;
-    library_archives project_library_archives;
+    struct compiler_flags {
+        std::string name;
+        std::string standard_library_flag;
+        std::string module_flag;
+        std::string module_search_path_flag;
+        std::string module_precompile_flag;
+        std::string precompile_warning_flags;
+        std::string module_source_flag;
+        std::string module_artifact_extension = defaults::precompiled_module_extension;
+        std::filesystem::path module_artifact_directory;
+        bool module_precompile_output = true;
+        bool native_std_module = false;
+        std::string std_module_compile_flag;
+        std::filesystem::path install_directory;
+        std::filesystem::path modules_directory;
+        using include_directories = std::set<std::filesystem::path>;
+        include_directories hlist;
+        include_directories qlist;
+        std::filesystem::path build_directory;
+        include_directories project_includes;
+        using library_directories = std::set<std::filesystem::path>;
+        library_directories project_libraries;
+        using library_archives = std::set<std::string>;
+        library_archives project_library_archives;
+    }
 };
 
 using available_compilers = std::list<compiler>;
