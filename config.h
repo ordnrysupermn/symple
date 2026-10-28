@@ -35,6 +35,6 @@ namespace defaults {
 
     constexpr auto gcc_name = "g++-16";
     constexpr auto clang_name = "clang";
+    constexpr auto default_compiler = "gcc";
 };
-
 

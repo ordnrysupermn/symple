@@ -406,12 +406,12 @@ int main(int argc, char* argv[]) {
     std::string shebang;
     bool shebang_arg = false;
     std::string shebang_args;
+    std::string_view compiler_name = defaults::default_compiler;
 
 
     if(argc > 1) {
-        for(auto s: std::span(argv, argc)
-                | std::views::drop(1)
-                | std::views::transform([](auto v){return std::string_view(v);})) {
+        for(int i = 1; i < argc; ++i) {
+            std::string_view s(argv[i]);
             // if its a filepath, then it must be coming from a shebang
             if(std::filesystem::exists(s)) {
                 shebang = s;
@@ -424,6 +424,14 @@ int main(int argc, char* argv[]) {
             }
             if(shebang_arg) {
                 shebang_args += s;
+                continue;
+            }
+            if(s == "--compiler") {
+                if(i + 1 >= argc) {
+                    std::println("Missing compiler name after --compiler (expected clang or gcc)");
+                    return EXIT_FAILURE;
+                }
+                compiler_name = argv[++i];
                 continue;
             }
             if(s == "clean") {
@@ -469,6 +477,10 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    if(compiler_name != "clang" && compiler_name != "gcc") {
+        std::println("Unsupported compiler: {:} (expected clang or gcc)", compiler_name);
+        return EXIT_FAILURE;
+    }
     if(!build)
         return EXIT_SUCCESS;
 
@@ -477,13 +489,12 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    auto cs = environment::detect_compilers(p.get_build_directory());
+    auto cs = environment::detect_compilers(p.get_build_directory(), compiler_name);
     if(cs.empty()) {
-        std::println("Failed to detect any valid compiler");
+        std::println("Failed to detect requested compiler: {:}", compiler_name);
         return EXIT_FAILURE;
     }
 
-    // TODO select compiler
     auto c = cs.front();
     c.build_directory = p.get_build_directory();
     printlnv("Detected compiler is: {:}, installed to: {:}", c.name, c.install_directory.string());

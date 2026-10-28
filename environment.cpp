@@ -243,17 +243,19 @@ struct compiler_gcc {
     }
 };
 
-using supported_compilers = std::tuple<compiler_gcc>;
-
-available_compilers detect_compilers(std::filesystem::path build_directory) {
+available_compilers detect_compilers(std::filesystem::path build_directory, std::string_view compiler_name) {
     available_compilers cs;
-    std::apply([&](auto c) {
-            auto r = c.detect(build_directory);
-            if(r) {
-                printlnv("Detected compiler: {:}", r->name);
-                cs.push_back(*r);
-            }
-        }, supported_compilers{});
+    auto detect = [&](auto c) {
+        auto r = c.detect(build_directory);
+        if(r) {
+            printlnv("Detected compiler: {:}", r->name);
+            cs.push_back(*r);
+        }
+    };
+    if(compiler_name == "clang")
+        detect(compiler_clang{});
+    else if(compiler_name == "gcc")
+        detect(compiler_gcc{});
     return cs;
 }
 

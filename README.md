@@ -12,6 +12,7 @@ Options:
 --verbose or -v: Print details about your compilation
 --verbose2 or -vv: The above plus all dependency information (LOT of logs)
 --compile-verbose: Asks symp to provide verbose flag to its compilation commands
+--compiler clang|gcc: Select the compiler (default: gcc)
 --no-build: Do not build. Building is the default
 
 Commands:
@@ -22,6 +23,7 @@ Notes:
 - code is written in a "scripting c++" style, please follow it
 
 Required local binaries:
-- clang++ (at the moment the only supported compiler)
+- clang (when using --compiler clang)
+- g++-16 (when using --compiler gcc, the default)
 - grep (because of lazyness)
 - nm (to check object files)
