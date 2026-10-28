@@ -242,15 +242,6 @@ struct project {
 
             printlnv2("    Dependencies:");
             for(auto m: pds.modules) {
-                if(c.native_std_module && m == "std") {
-                    auto module_artifact = precompile_module(c, x, "std");
-                    printlnv2("        Compiling GCC standard module: {:}", module_artifact.string());
-                    x.add_dependency(object, module_artifact);
-                    if(is_module(source))
-                        x.add_dependency(pcm, module_artifact);
-                    continue;
-                }
-
                 auto module_source = textfile::append_extension(m, defaults::module_extension);
                 auto ps = this->directory.find_file(module_source);
                 bool external = false;

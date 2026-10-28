@@ -30,52 +30,50 @@ struct compiler {
     auto create_dependencies(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
         c << compile::compiler(this->name)
-            << compile::std_standard(defaults::std_standard)
-            << compile::custom(this->module_flag)
-            << compile::includes(this->project_includes)
-            << compile::custom("-MM -MF")
-            << compile::custom(o.string()) << compile::custom(i.string());
+        << compile::std_standard(defaults::std_standard);
+        for(auto const&f: this->dependency_flags)
+            c << compile::custom(f);
+        c << compile::includes(this->project_includes)
+        << compile::custom("-MM -MF")
+        << compile::custom(o.string()) << compile::custom(i.string());
 
         printlnv("Creating dependencies for file: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
     }
     auto compile_cpp(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard);
-        c << compile::custom(this->standard_library_flag);
-        c << compile::warnings(defaults::warnings) << compile::verbose(options::compile_verbose) << compile::compile_only()
-                << compile::includes(this->project_includes)
-                << compile::custom(this->module_flag);
-        if(!this->module_source_flag.empty())
-            c << compile::custom(this->module_source_flag);
-        if(!this->module_search_path_flag.empty())
-            c << compile::custom(this->module_search_path_flag + build_directory.string());
-        c << compile::custom(i.string()) << compile::archive(o);
+        c << compile::compiler(this->name) 
+        << compile::std_standard(defaults::std_standard)
+        << compile::warnings(defaults::warnings) 
+        << compile::verbose(options::compile_verbose) 
+        << compile::compile_only()
+        << compile::includes(this->project_includes);
+        for(auto const&f: this->compile_flags)
+            c << compile::custom(f);
+        c << compile::custom(i.string()) 
+        << compile::archive(o);
 
         printlnv("Compiling: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
     }
     auto precompile_module(std::filesystem::path i, std::filesystem::path o) const {
-        if(this->module_precompile_flag.empty()) {
-            printlnv("Module precompilation is not supported by {:}", this->name);
-            return EXIT_FAILURE;
-        }
+        
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard)
-                << compile::custom(this->standard_library_flag)
-                << compile::custom(this->module_flag);
-        if(this->native_std_module && i == "std") {
-            c << compile::custom(this->std_module_compile_flag);
-            printlnv("Compiling standard module: {:}", c.get());
+        c << compile::compiler(this->name) 
+        << compile::std_standard(defaults::std_standard);
+        if(i.filename() == "std.cc"&&this->module_artifact_extension == ".gcm") {
+            c << compile::custom("-fmodules")
+            << compile::custom("-fsearch-include-path")
+            << compile::compile_only()
+            << compile::custom("bits/std.cc");
             return c.spawn(get_build_log());
         }
-        c << compile::warnings(defaults::warnings) << compile::verbose(options::compile_verbose)
-                << compile::custom(this->precompile_warning_flags);
-        if(!this->module_source_flag.empty())
-            c << compile::custom(this->module_source_flag);
-        if(!this->module_search_path_flag.empty())
-            c << compile::custom(this->module_search_path_flag + build_directory.string());
-        c << compile::custom(this->module_precompile_flag) << compile::custom(i.string());
+        
+        c << compile::warnings(defaults::warnings)
+        << compile::verbose(options::compile_verbose);
+        for(auto const&f: this->precompile_flags)
+            c << compile::custom(f);
+        c << compile::custom(i.string());
         if(this->module_precompile_output)
             c << compile::archive(o);
 
@@ -86,7 +84,8 @@ struct compiler {
     auto link(std::filesystem::path t, auto const&objects, auto const&libraries) const {
         compile::command c;
         c << compile::compiler(this->name);
-        c << compile::custom(this->standard_library_flag);
+        for(auto const&f: this->link_flags)
+            c << compile::custom(f);
         c << compile::libraries(this->project_libraries);
         for(auto const&o: objects)
             c << compile::custom(o);
@@ -117,6 +116,15 @@ struct compiler {
     auto find_module(std::filesystem::path p) {
         auto find_file = [&](auto const&e){return p.filename() == e.path().filename() && e.is_regular_file();};
         std::list<std::filesystem::path> res;
+        if(p.filename() == "std.cppm"&&this->module_artifact_extension == ".gcm") {
+            for(auto const&d: this->hlist) {
+                auto candidate = d/"bits"/"std.cc";
+                if(std::filesystem::is_regular_file(candidate)) {
+                    res.push_back(candidate);
+                    return res;
+                }
+            }
+        }
         auto search_directory = [&](auto const&directory, bool recursive) {
             if(!std::filesystem::is_directory(directory))
                 return;
@@ -144,6 +152,8 @@ struct compiler {
     }
 
     auto module_artifact_path(std::filesystem::path module) const {
+        if(module.filename() == "std.cc"&&this->module_artifact_extension == ".gcm")
+            return this->module_artifact_directory/"std.gcm";
         if(module.extension() == defaults::module_extension)
             module.replace_extension(this->module_artifact_extension);
         else
@@ -162,14 +172,13 @@ struct compiler {
             };
         return res;
     }
-    struct compiler_flags {
+
+
         std::string name;
-        std::string standard_library_flag;
-        std::string module_flag;
-        std::string module_search_path_flag;
-        std::string module_precompile_flag;
-        std::string precompile_warning_flags;
-        std::string module_source_flag;
+        std::vector<std::string> compile_flags;
+        std::vector<std::string> link_flags;
+        std::vector<std::string> precompile_flags;
+        std::vector<std::string> dependency_flags; 
         std::string module_artifact_extension = defaults::precompiled_module_extension;
         std::filesystem::path module_artifact_directory;
         bool module_precompile_output = true;
@@ -186,7 +195,6 @@ struct compiler {
         library_directories project_libraries;
         using library_archives = std::set<std::string>;
         library_archives project_library_archives;
-    }
 };
 
 using available_compilers = std::list<compiler>;
