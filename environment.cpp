@@ -85,7 +85,7 @@ struct compiler_clang {
 
         build::executor x;
 
-        auto info_file = build_directory / (c.name + "_compiler_info");
+        auto info_file = build_directory / (c.name + "_" + defaults::compiler_info_file);
 
         x.add_build_command(info_file, [&](){
                 auto r = std::system(std::format("{:} --version {:}", c.name, os::redirect_to(info_file)).c_str());
@@ -107,7 +107,7 @@ struct compiler_clang {
             });
         x.add_dependency(test_file, {info_file});
 
-        auto details_file = build_directory/defaults::compiler_details_file;
+        auto details_file = build_directory/(c.name + "_" + defaults::compiler_details_file);
         x.add_build_command(details_file, [&]() {
                 auto r = c.invoke(details_file, compile::custom("-x c++"),
                     compile::verbose(true), compile::custom(test_file), compile::archive(test_output_file));
@@ -202,7 +202,7 @@ struct compiler_gcc {
 
         build::executor x;
 
-        auto info_file = build_directory / (c.name + "_compiler_info");
+        auto info_file = build_directory / (c.name + "_" + defaults::compiler_info_file);
 
         x.add_build_command(info_file, [&](){
                 auto r = std::system(std::format("{:} -print-search-dirs {:}", c.name, os::redirect_to(info_file)).c_str());
@@ -224,7 +224,7 @@ struct compiler_gcc {
             });
         x.add_dependency(test_file, {info_file});
 
-        auto details_file = build_directory/defaults::compiler_details_file;
+        auto details_file = build_directory/(c.name + "_" + defaults::compiler_details_file);
         x.add_build_command(details_file, [&]() {
                 auto r = c.invoke(details_file, compile::custom("-x c++"),
                     compile::custom("-v"), compile::custom(test_file), compile::archive(test_output_file));
