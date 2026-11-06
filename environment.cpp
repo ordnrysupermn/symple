@@ -54,14 +54,18 @@ struct compiler_clang {
         std::ifstream is(p);
         std::regex bindir_regex(std::string("InstalledDir:\\s*") + defaults::path_regex + "\\s*.*");
         std::smatch m;
+        std::filesystem::path install_directory;
         auto i = std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l) {
-                    return std::regex_match(l, m, bindir_regex);
+                    if(!std::regex_match(l, m, bindir_regex))
+                        return false;
+                    install_directory = m[1].str();
+                    return true;
                 });
-        if(m.size() != 2) {
+        if(i == textfile::in_it() || install_directory.empty()) {
             printlnv("Could not locate installation directory");
             return std::make_tuple(std::filesystem::path{}, std::filesystem::path{});
         }
-        std::filesystem::path id{std::filesystem::path{m[1]}.parent_path()};
+        std::filesystem::path id{install_directory.parent_path()};
         std::filesystem::path md = id / "share";
 
         return std::make_tuple(id, md);
@@ -115,8 +119,10 @@ struct compiler_clang {
                     printlnv("Compiler command returned an error, assuming invalid");
                     return r;
                 }
-                std::tie(c.qlist, c.hlist) = scan_details(details_file);
                 return EXIT_SUCCESS; 
+            }, [&]() {
+                std::tie(c.qlist, c.hlist) = scan_details(details_file);
+                return EXIT_SUCCESS;
             });
         x.add_dependency(details_file, {test_file});
         if(x.build())
@@ -162,7 +168,7 @@ struct compiler_gcc {
         }
 
         std::regex eregex(".*End of search list\\..*");
-        std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l){
+        auto i =std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l){
                     auto match = std::regex_match(l.string(), eregex);
                     if(!match)
                         convert_and_add(l, hlist);
@@ -176,16 +182,19 @@ struct compiler_gcc {
         std::ifstream is(p);
         std::regex install_regex(std::string("install:\\s*") + defaults::path_regex + "\\s*.*");
         std::smatch m;
+        std::filesystem::path install_directory;
         auto i = std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l) {
-                    return std::regex_match(l, m, install_regex);
+                    if(!std::regex_match(l, m, install_regex))
+                        return false;
+                    install_directory = m[1].str();
+                    return true;
                 });
-        if(m.size() != 2) {
+        if(i == textfile::in_it() || install_directory.empty()) {
             printlnv("Could not locate GCC installation directory");
             return std::make_tuple(std::filesystem::path{}, std::filesystem::path{});
         }
 
-        std::filesystem::path id{m[1]};
-        return std::make_tuple(id, id);
+        return std::make_tuple(install_directory, install_directory);
     }
 
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
@@ -197,7 +206,7 @@ struct compiler_gcc {
         c.native_std_module = true;
         c.compile_flags = {"-fmodules", "-x c++"};
         c.precompile_flags = {"-fmodules", "-x c++", "-fmodule-only"};
-        c.dependency_flags = {"-fmodules"};
+        c.dependency_flags = {"-fmodules", "-Mno-modules"};
   
 
         build::executor x;
@@ -232,6 +241,8 @@ struct compiler_gcc {
                     printlnv("Compiler command returned an error, assuming invalid");
                     return r;
                 }
+                return EXIT_SUCCESS;
+            }, [&]() {
                 std::tie(c.qlist, c.hlist) = scan_details(details_file);
                 return EXIT_SUCCESS;
             });
