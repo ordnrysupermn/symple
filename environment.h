@@ -61,9 +61,10 @@ struct compiler {
         compile::command c;
         c << compile::compiler(this->name) 
         << compile::std_standard(defaults::std_standard);
+        for(auto const&f: this->precompile_flags)
+            c << compile::custom(f);
         if(i.filename() == "std.cc"&&this->module_artifact_extension == ".gcm") {
-            c << compile::custom("-fmodules")
-            << compile::custom("-fsearch-include-path")
+            c << compile::custom("-fsearch-include-path")
             << compile::compile_only()
             << compile::custom("bits/std.cc");
             return c.spawn(get_build_log());
@@ -71,8 +72,7 @@ struct compiler {
         
         c << compile::warnings(defaults::warnings)
         << compile::verbose(options::compile_verbose);
-        for(auto const&f: this->precompile_flags)
-            c << compile::custom(f);
+        
         c << compile::custom(i.string());
         if(this->module_precompile_output)
             c << compile::archive(o);
