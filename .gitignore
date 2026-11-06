@@ -32,3 +32,6 @@
 *.exe
 *.out
 *.app
+
+# symple executable
+symp

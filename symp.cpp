@@ -116,6 +116,13 @@ struct project {
         printlnv("Removing build directory: {:}", this->build_directory.root.string());
         return this->build_directory.remove();
     }
+    auto remove_module_cache() {
+        std::error_code ec;
+        std::filesystem::remove_all("gcm.cache", ec);
+        if(ec)
+            std::println("Failed to remove GCC module cache: {:}", ec.message());
+        return !ec;
+    }
 
     using main_symbols = std::list<std::filesystem::path>;
     static auto read_main_symbol(std::filesystem::path p) {
@@ -139,15 +146,16 @@ struct project {
     auto remove_binary() {
         // TODO: probably there is a better way to identify it as this will fail
         // in a broken compilation being cleaned up
-        // maybe the binary shall live in .symp and just sym-linked to the root
-        auto f = get_build_directory()/defaults::main_detect;
-        if(std::filesystem::exists(f)) {
-            auto mains = read_main_symbol(f);
+        for(auto compiler_name: {defaults::clang_name, defaults::gcc_name}) {
+            auto f = get_build_directory()/compiler_name/defaults::main_detect;
+            if(std::filesystem::exists(f)) {
+                auto mains = read_main_symbol(f);
 
-            for(auto const&m: mains) {
-                // ignore errors
-                std::error_code ec;
-                std::filesystem::remove(m.stem(), ec);
+                for(auto const&m: mains) {
+                    // ignore errors
+                    std::error_code ec;
+                    std::filesystem::remove(m.stem().filename(), ec);
+                }
             }
         }
         
@@ -170,11 +178,14 @@ struct project {
         return object;
     }
     auto precompile_module(auto const&c, auto&x, auto source) {
-        auto pcm = get_build_directory()/source.filename().replace_extension(defaults::precompiled_module_extension);
-        printlnv2("    Adding precompile command {:}", pcm.string());
-        x.add_build_command(pcm, [source, pcm, &c]() {return c.precompile_module(source, pcm);});
-        x.add_dependency(pcm, source);
-        return pcm;
+        std::filesystem::path module_source{source};
+        auto module_artifact = c.module_artifact_path(module_source.filename());
+        printlnv2("    Adding precompile command {:}", module_artifact.string());
+        x.add_build_command(module_artifact, [module_source, module_artifact, &c]() {
+                return c.precompile_module(module_source, module_artifact);
+            });
+        x.add_dependency(module_artifact, module_source);
+        return module_artifact;
     }
     auto compile_deps_file(auto const&c, auto&x, auto source, auto object) {
         auto deps = get_build_directory()/source;
@@ -252,13 +263,13 @@ struct project {
                     std::println("Using {:}", ps.front().string());
                 }
                 module_source = ps.front();
-                auto dpcm = build_directory/textfile::append_extension(m, defaults::precompiled_module_extension);
-                printlnv2("        Adding dependent module: {:} -> {:}", object.string(), dpcm.string());
-                x.add_dependency(object, dpcm);
+                auto module_artifact = c.module_artifact_path(m);
+                printlnv2("        Adding dependent module: {:} -> {:}", object.string(), module_artifact.string());
+                x.add_dependency(object, module_artifact);
 
                 if(is_module(source)) {
-                    printlnv2("        Adding dependent module: {:} -> {:}", pcm.string(), dpcm.string());
-                    x.add_dependency(pcm, dpcm);
+                    printlnv2("        Adding dependent module: {:} -> {:}", pcm.string(), module_artifact.string());
+                    x.add_dependency(pcm, module_artifact);
                 }
                 if(external) {
                     // Check if this is a std.cppm or std.compat.cppm
@@ -269,7 +280,7 @@ struct project {
                     }
                     else {
                         // Regular external module - add to sources for compilation
-                        auto [ignored, inserted] = modules.insert({module_source, dpcm});
+                        auto [ignored, inserted] = modules.insert({module_source, module_artifact});
                         if(inserted)
                             sources.push_back(module_source);
                     }
@@ -355,7 +366,7 @@ struct project {
                         std::println("{:}", p.string());
                     return EXIT_FAILURE;
                 }           
-                auto main = mains.front().stem();
+                auto main = mains.front().stem().filename();
                 x.add_build_command(main, [main, &objects, &c]() {
                         return c.link(main, objects, c.project_library_archives);
                     }, [main, run_binary]() {
@@ -396,12 +407,12 @@ int main(int argc, char* argv[]) {
     std::string shebang;
     bool shebang_arg = false;
     std::string shebang_args;
+    std::string_view compiler_name = defaults::default_compiler;
 
 
     if(argc > 1) {
-        for(auto s: std::span(argv, argc)
-                | std::views::drop(1)
-                | std::views::transform([](auto v){return std::string_view(v);})) {
+        for(int i = 1; i < argc; ++i) {
+            std::string_view s(argv[i]);
             // if its a filepath, then it must be coming from a shebang
             if(std::filesystem::exists(s)) {
                 shebang = s;
@@ -416,10 +427,19 @@ int main(int argc, char* argv[]) {
                 shebang_args += s;
                 continue;
             }
+            if(s == "--compiler") {
+                if(i + 1 >= argc) {
+                    std::println("Missing compiler name after --compiler (expected clang or gcc)");
+                    return EXIT_FAILURE;
+                }
+                compiler_name = argv[++i];
+                continue;
+            }
             if(s == "clean") {
                 printlnv("Project cleanup is executed");
                 p.remove_binary();
                 p.remove_build_directory();
+                p.remove_module_cache();
                 p.remove_symp_bang();
                 continue;
             }
@@ -437,6 +457,7 @@ int main(int argc, char* argv[]) {
                 printlnv("Project wipe is executed");
                 p.remove_binary();
                 p.remove_build_directory();
+                p.remove_module_cache();
                 p.remove_data_directory();
                 p.remove_symp_bang();
                 build = false;
@@ -457,21 +478,26 @@ int main(int argc, char* argv[]) {
             }
         }
     }
+    if(compiler_name != "clang" && compiler_name != "gcc") {
+        std::println("Unsupported compiler: {:} (expected clang or gcc)", compiler_name);
+        return EXIT_FAILURE;
+    }
     if(!build)
         return EXIT_SUCCESS;
+
+    p.build_directory.root /= (compiler_name == "clang" ? defaults::clang_name : defaults::gcc_name);
 
     if(!p.create_build_directory()) {
         std::println("Cannot create build directory");
         return EXIT_FAILURE;
     }
 
-    auto cs = environment::detect_compilers(p.get_build_directory());
+    auto cs = environment::detect_compilers(p.get_build_directory(), compiler_name);
     if(cs.empty()) {
-        std::println("Failed to detect any valid compiler");
+        std::println("Failed to detect requested compiler: {:}", compiler_name);
         return EXIT_FAILURE;
     }
 
-    // TODO select compiler
     auto c = cs.front();
     c.build_directory = p.get_build_directory();
     printlnv("Detected compiler is: {:}, installed to: {:}", c.name, c.install_directory.string());
@@ -498,4 +524,3 @@ int main(int argc, char* argv[]) {
 
     return (p.compile(c) ? EXIT_SUCCESS : EXIT_FAILURE);
 }
-
