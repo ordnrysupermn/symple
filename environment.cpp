@@ -201,12 +201,13 @@ struct compiler_gcc {
         compiler c{defaults::gcc_name};
         
         c.module_artifact_extension = ".gcm";
-        c.module_artifact_directory = "gcm.cache";
+        c.module_artifact_directory = build_directory / "gcm.cache";
         c.module_precompile_output = false;
         c.native_std_module = true;
-        c.compile_flags = {"-fmodules", "-x c++"};
-        c.precompile_flags = {"-fmodules", "-x c++", "-fmodule-only"};
-        c.dependency_flags = {"-fmodules", "-Mno-modules"};
+        auto module_mapper = std::format("'-fmodule-mapper=|@g++-mapper-server -r {}'", c.module_artifact_directory.string());
+        c.compile_flags = {"-fmodules", "-x c++", module_mapper};
+        c.precompile_flags = {"-fmodules", "-x c++", "-fmodule-only", module_mapper};
+        c.dependency_flags = {"-fmodules", "-Mno-modules", module_mapper};
   
 
         build::executor x;
