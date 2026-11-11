@@ -129,6 +129,6 @@ struct compiler {
 };
 
 using available_compilers = std::list<compiler>;
-available_compilers detect_compilers(std::filesystem::path build_directory);
+available_compilers detect_compilers(std::filesystem::path build_directory, std::string_view compiler_name);
 
 } // environment

@@ -70,7 +70,7 @@ struct compiler_clang {
 
 
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
-        compiler c{"clang++"};
+        compiler c{defaults::clang_name};
 
         build::executor x;
 
@@ -115,15 +115,18 @@ struct compiler_clang {
     }
 };
 
-using supported_compilers = std::tuple<compiler_clang>;
 
-available_compilers detect_compilers(std::filesystem::path build_directory) {
+available_compilers detect_compilers(std::filesystem::path build_directory, std::string_view compiler_name) {
     available_compilers cs;
-    std::apply([&](auto c) {
-            auto r = c.detect(build_directory);
-            if(r)
-                cs.push_back(*r);
-        }, supported_compilers{});
+    auto detect = [&](auto c) {
+        auto r = c.detect(build_directory);
+        if(r) {
+            printlnv("Detected compiler: {:}", r->name);
+            cs.push_back(*r);
+        }
+    };
+    if(compiler_name == "clang")
+        detect(compiler_clang{});
     return cs;
 }
 
