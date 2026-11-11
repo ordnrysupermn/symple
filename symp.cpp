@@ -139,15 +139,16 @@ struct project {
     auto remove_binary() {
         // TODO: probably there is a better way to identify it as this will fail
         // in a broken compilation being cleaned up
-        // maybe the binary shall live in .symp and just sym-linked to the root
-        auto f = get_build_directory()/defaults::main_detect;
-        if(std::filesystem::exists(f)) {
-            auto mains = read_main_symbol(f);
+        for(auto compiler_name: {defaults::clang_name}) {
+            auto f = get_build_directory()/compiler_name/defaults::main_detect;
+            if(std::filesystem::exists(f)) {
+                auto mains = read_main_symbol(f);
 
-            for(auto const&m: mains) {
-                // ignore errors
-                std::error_code ec;
-                std::filesystem::remove(m.stem(), ec);
+                for(auto const&m: mains) {
+                    // ignore errors
+                    std::error_code ec;
+                    std::filesystem::remove(m.stem().filename(), ec);
+                }
             }
         }
         
@@ -355,7 +356,7 @@ struct project {
                         std::println("{:}", p.string());
                     return EXIT_FAILURE;
                 }           
-                auto main = mains.front().stem();
+                auto main = mains.front().stem().filename();
                 x.add_build_command(main, [main, &objects, &c]() {
                         return c.link(main, objects, c.project_library_archives);
                     }, [main, run_binary]() {
@@ -471,6 +472,8 @@ int main(int argc, char* argv[]) {
     }
     if(!build)
         return EXIT_SUCCESS;
+
+    p.build_directory.root /= (defaults::clang_name);
 
     if(!p.create_build_directory()) {
         std::println("Cannot create build directory");
