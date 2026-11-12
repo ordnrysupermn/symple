@@ -116,6 +116,13 @@ struct project {
         printlnv("Removing build directory: {:}", this->build_directory.root.string());
         return this->build_directory.remove();
     }
+    auto remove_module_cache() {
+        std::error_code ec;
+        std::filesystem::remove_all("gcm.cache", ec);
+        if(ec)
+            std::println("Failed to remove GCC module cache: {:}", ec.message());
+        return !ec;
+    }
 
     using main_symbols = std::list<std::filesystem::path>;
     static auto read_main_symbol(std::filesystem::path p) {
@@ -432,6 +439,7 @@ int main(int argc, char* argv[]) {
                 printlnv("Project cleanup is executed");
                 p.remove_binary();
                 p.remove_build_directory();
+                p.remove_module_cache();
                 p.remove_symp_bang();
                 continue;
             }
@@ -449,6 +457,7 @@ int main(int argc, char* argv[]) {
                 printlnv("Project wipe is executed");
                 p.remove_binary();
                 p.remove_build_directory();
+                p.remove_module_cache();
                 p.remove_data_directory();
                 p.remove_symp_bang();
                 build = false;
