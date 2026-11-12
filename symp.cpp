@@ -171,11 +171,14 @@ struct project {
         return object;
     }
     auto precompile_module(auto const&c, auto&x, auto source) {
-        auto pcm = get_build_directory()/source.filename().replace_extension(defaults::precompiled_module_extension);
-        printlnv2("    Adding precompile command {:}", pcm.string());
-        x.add_build_command(pcm, [source, pcm, &c]() {return c.precompile_module(source, pcm);});
-        x.add_dependency(pcm, source);
-        return pcm;
+        std::filesystem::path module_source{source};
+        auto module_artifact = c.module_artifact_path(module_source.filename());
+        printlnv2("    Adding precompile command {:}", module_artifact.string());
+        x.add_build_command(module_artifact, [module_source, module_artifact, &c]() {
+                return c.precompile_module(module_source, module_artifact);
+            });
+        x.add_dependency(module_artifact, module_source);
+        return module_artifact;
     }
     auto compile_deps_file(auto const&c, auto&x, auto source, auto object) {
         auto deps = get_build_directory()/source;
@@ -253,13 +256,13 @@ struct project {
                     std::println("Using {:}", ps.front().string());
                 }
                 module_source = ps.front();
-                auto dpcm = build_directory/textfile::append_extension(m, defaults::precompiled_module_extension);
-                printlnv2("        Adding dependent module: {:} -> {:}", object.string(), dpcm.string());
-                x.add_dependency(object, dpcm);
+                auto module_artifact = c.module_artifact_path(m);
+                printlnv2("        Adding dependent module: {:} -> {:}", object.string(), module_artifact.string());
+                x.add_dependency(object, module_artifact);
 
                 if(is_module(source)) {
-                    printlnv2("        Adding dependent module: {:} -> {:}", pcm.string(), dpcm.string());
-                    x.add_dependency(pcm, dpcm);
+                    printlnv2("        Adding dependent module: {:} -> {:}", pcm.string(), module_artifact.string());
+                    x.add_dependency(pcm, module_artifact);
                 }
                 if(external) {
                     // Check if this is a std.cppm or std.compat.cppm
@@ -270,7 +273,7 @@ struct project {
                     }
                     else {
                         // Regular external module - add to sources for compilation
-                        auto [ignored, inserted] = modules.insert({module_source, dpcm});
+                        auto [ignored, inserted] = modules.insert({module_source, module_artifact});
                         if(inserted)
                             sources.push_back(module_source);
                     }

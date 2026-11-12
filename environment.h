@@ -106,12 +106,39 @@ struct compiler {
 
     auto find_module(std::filesystem::path p) {
         auto find_file = [&](auto const&e){return p.filename() == e.path().filename() && e.is_regular_file();};
-        std::list<std::filesystem::path> res{std::from_range,
-                std::filesystem::recursive_directory_iterator(this->modules_directory, std::filesystem::directory_options::skip_permission_denied)
+        std::list<std::filesystem::path> res;
+        auto search_directory = [&](auto const&directory, bool recursive) {
+            if(!std::filesystem::is_directory(directory))
+                return;
+            auto candidate = directory/p.filename();
+            if(std::filesystem::is_regular_file(candidate))
+                res.push_back(std::move(candidate));
+            if(!recursive)
+                return;
+            auto files = std::filesystem::recursive_directory_iterator(
+                    directory, std::filesystem::directory_options::skip_permission_denied)
                 | std::views::filter(find_file)
-                | std::views::transform(&std::filesystem::directory_entry::path)
-            };
+                | std::views::transform(&std::filesystem::directory_entry::path);
+            std::ranges::copy(files, std::back_inserter(res));
+        };
+        for(auto const&directory: this->hlist) {
+            auto is_cpp_include = directory.filename().string().starts_with("c++");
+            search_directory(directory, is_cpp_include);
+        }
+        if(!this->modules_directory.empty() && std::filesystem::exists(this->modules_directory)) {
+            search_directory(this->modules_directory, true);
+        }
+        res.sort();
+        res.unique();
         return res;
+    }
+
+    auto module_artifact_path(std::filesystem::path module) const {
+        if(module.extension() == defaults::module_extension)
+            module.replace_extension(this->module_artifact_extension);
+        else
+            module += this->module_artifact_extension;
+        return this->module_artifact_directory/module;
     }
 
     auto search_includes(std::filesystem::path p) {
