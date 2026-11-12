@@ -120,6 +120,8 @@ struct compiler_clang {
                     printlnv("Compiler command returned an error, assuming invalid");
                     return r;
                 }
+                return EXIT_SUCCESS; 
+            }, [&]() {
                 std::tie(c.qlist, c.hlist) = scan_details(details_file);
                 return EXIT_SUCCESS; 
             });
