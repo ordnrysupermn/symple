@@ -60,6 +60,13 @@ struct compiler {
         compile::command c;
         c << compile::compiler(this->name) 
         << compile::std_standard(defaults::std_standard);        
+        if(i.filename() == "std.cc"&&this->module_artifact_extension == ".gcm") {
+            c << compile::custom("-fmodules")
+            << compile::custom("-fsearch-include-path")
+            << compile::compile_only()
+            << compile::custom("bits/std.cc");
+            return c.spawn(get_build_log());
+        }
         c << compile::warnings(defaults::warnings)
         << compile::verbose(options::compile_verbose);
         for(auto const&f: this->precompile_flags)
@@ -107,6 +114,15 @@ struct compiler {
     auto find_module(std::filesystem::path p) {
         auto find_file = [&](auto const&e){return p.filename() == e.path().filename() && e.is_regular_file();};
         std::list<std::filesystem::path> res;
+        if(p.filename() == "std.cppm"&&this->module_artifact_extension == ".gcm") {
+            for(auto const&d: this->hlist) {
+                auto candidate = d/"bits"/"std.cc";
+                if(std::filesystem::is_regular_file(candidate)) {
+                    res.push_back(candidate);
+                    return res;
+                }
+            }
+        }
         auto search_directory = [&](auto const&directory, bool recursive) {
             if(!std::filesystem::is_directory(directory))
                 return;
@@ -134,6 +150,8 @@ struct compiler {
     }
 
     auto module_artifact_path(std::filesystem::path module) const {
+        if(module.filename() == "std.cc"&&this->module_artifact_extension == ".gcm")
+            return this->module_artifact_directory/"std.gcm";
         if(module.extension() == defaults::module_extension)
             module.replace_extension(this->module_artifact_extension);
         else
