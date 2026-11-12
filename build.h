@@ -84,6 +84,10 @@ struct executor {
             return false;
         }
         auto k = std::ranges::find_if(j->second, [&] (auto const&d) {
+                if(!std::filesystem::exists(d)) {
+                    printlnv2("{:} missing dependency: {:}", *in, d.string());
+                    return true;
+                }
                 auto dependent_time = std::filesystem::last_write_time(d);
                 printlnv2("{:} last write of {:} is {:}", *in, d.string(), time);
                 if(dependent_time > time) {
@@ -122,8 +126,9 @@ struct executor {
         if(needs_build(v.first)) {
             printlnv2("Building: {:}", v.first.string());
             // NOTE: ensure that the directory structure exists
-            auto parent_path = std::filesystem::weakly_canonical(v.first.parent_path());
-            std::filesystem::create_directories(parent_path);
+            auto parent_path = v.first.parent_path();
+            if(!parent_path.empty())
+                std::filesystem::create_directories(std::filesystem::weakly_canonical(parent_path));
             auto r = v.second.execute();
             if(r) {
                 textfile::cat(options::build_log);
