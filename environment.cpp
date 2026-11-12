@@ -71,6 +71,18 @@ struct compiler_clang {
 
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
         compiler c{defaults::clang_name};
+        c.compile_flags = {"-stdlib=" + std::string(defaults::std_lib), "-fprebuilt-module-path=" + build_directory.string()};
+
+        c.precompile_flags = {
+            "-stdlib=" + std::string(defaults::std_lib),
+            "--precompile",
+            "-Wno-reserved-identifier",
+            "-Wno-reserved-module-identifier",
+            "-fprebuilt-module-path=" + build_directory.string()
+        };
+
+        c.link_flags = {"-stdlib=" + std::string(defaults::std_lib)};
+        c.module_artifact_directory = build_directory;
 
         build::executor x;
 

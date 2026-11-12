@@ -30,33 +30,43 @@ struct compiler {
     auto create_dependencies(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
         c << compile::compiler(this->name)
-            << compile::std_standard(defaults::std_standard)
-            << compile::includes(this->project_includes)
-            << compile::custom("-MM -MF")
-            << compile::custom(o.string()) << compile::custom(i.string());
+        << compile::std_standard(defaults::std_standard);
+        for(auto const&f: this->dependency_flags)
+            c << compile::custom(f);
+        c << compile::includes(this->project_includes)
+        << compile::custom("-MM -MF")
+        << compile::custom(o.string()) << compile::custom(i.string());
 
         printlnv("Creating dependencies for file: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
     }
     auto compile_cpp(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard) << compile::std_lib(defaults::std_lib)
-                << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose) << compile::compile_only()
-                << compile::includes(this->project_includes)
-                << compile::custom(std::string("-fprebuilt-module-path=") + build_directory.string())
-                << compile::custom(i.string()) << compile::archive(o);
+        c << compile::compiler(this->name) 
+        << compile::std_standard(defaults::std_standard)
+        << compile::warnings(defaults::warnings) 
+        << compile::verbose(options::compile_verbose) 
+        << compile::compile_only()
+        << compile::includes(this->project_includes);
+        for(auto const&f: this->compile_flags)
+            c << compile::custom(f);
+        c << compile::custom(i.string()) 
+        << compile::archive(o);
 
         printlnv("Compiling: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
     }
     auto precompile_module(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard) << compile::std_lib(defaults::std_lib)
-                << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose)
-                << compile::warnings("no-reserved-identifier") << compile::warnings("no-reserved-module-identifier")
-                << compile::custom(std::string("-fprebuilt-module-path=") + build_directory.string())
-                << compile::custom("--precompile")
-                << compile::custom(i.string()) << compile::archive(o);
+        c << compile::compiler(this->name) 
+        << compile::std_standard(defaults::std_standard);        
+        c << compile::warnings(defaults::warnings)
+        << compile::verbose(options::compile_verbose);
+        for(auto const&f: this->precompile_flags)
+            c << compile::custom(f);
+        c << compile::custom(i.string());
+        if(this->module_precompile_output)
+            c << compile::archive(o);
 
         printlnv("Compiling: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
@@ -64,7 +74,9 @@ struct compiler {
 
     auto link(std::filesystem::path t, auto const&objects, auto const&libraries) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_lib(defaults::std_lib);
+        c << compile::compiler(this->name);
+        for(auto const&f: this->link_flags)
+            c << compile::custom(f);
         c << compile::libraries(this->project_libraries);
         for(auto const&o: objects)
             c << compile::custom(o);
@@ -115,6 +127,13 @@ struct compiler {
     }
 
     std::string name;
+    std::vector<std::string> compile_flags;
+    std::vector<std::string> link_flags;
+    std::vector<std::string> precompile_flags;
+    std::vector<std::string> dependency_flags; 
+    std::string module_artifact_extension = defaults::precompiled_module_extension;
+    std::filesystem::path module_artifact_directory;
+    bool module_precompile_output = true;
     std::filesystem::path install_directory;
     std::filesystem::path modules_directory;
     using include_directories = std::set<std::filesystem::path>;
