@@ -55,14 +55,18 @@ struct compiler_clang {
         std::ifstream is(p);
         std::regex bindir_regex(std::string("InstalledDir:\\s*") + defaults::path_regex + "\\s*.*");
         std::smatch m;
+        std::filesystem::path install_directory;
         auto i = std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l) {
-                    return std::regex_match(l, m, bindir_regex);
+                    if(!std::regex_match(l, m, bindir_regex))
+                        return false;
+                    install_directory = m[1].str();
+                    return true;
                 });
-        if(m.size() != 2) {
+        if(i == textfile::in_it() || install_directory.empty()) {
             printlnv("Could not locate installation directory");
             return std::make_tuple(std::filesystem::path{}, std::filesystem::path{});
         }
-        std::filesystem::path id{std::filesystem::path{m[1]}.parent_path()};
+        std::filesystem::path id{install_directory.parent_path()};
         std::filesystem::path md = id / "share";
 
         return std::make_tuple(id, md);
