@@ -30,33 +30,50 @@ struct compiler {
     auto create_dependencies(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
         c << compile::compiler(this->name)
-            << compile::std_standard(defaults::std_standard)
-            << compile::includes(this->project_includes)
-            << compile::custom("-MM -MF")
-            << compile::custom(o.string()) << compile::custom(i.string());
+        << compile::std_standard(defaults::std_standard);
+        for(auto const&f: this->dependency_flags)
+            c << compile::custom(f);
+        c << compile::includes(this->project_includes)
+        << compile::custom("-MM -MF")
+        << compile::custom(o.string()) << compile::custom(i.string());
 
         printlnv("Creating dependencies for file: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
     }
     auto compile_cpp(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard) << compile::std_lib(defaults::std_lib)
-                << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose) << compile::compile_only()
-                << compile::includes(this->project_includes)
-                << compile::custom(std::string("-fprebuilt-module-path=") + build_directory.string())
-                << compile::custom(i.string()) << compile::archive(o);
+        c << compile::compiler(this->name) 
+        << compile::std_standard(defaults::std_standard)
+        << compile::warnings(defaults::warnings) 
+        << compile::verbose(options::compile_verbose) 
+        << compile::compile_only()
+        << compile::includes(this->project_includes);
+        for(auto const&f: this->compile_flags)
+            c << compile::custom(f);
+        c << compile::custom(i.string()) 
+        << compile::archive(o);
 
         printlnv("Compiling: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
     }
     auto precompile_module(std::filesystem::path i, std::filesystem::path o) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_standard(defaults::std_standard) << compile::std_lib(defaults::std_lib)
-                << compile::warnings(defaults::warnings)  << compile::verbose(options::compile_verbose)
-                << compile::warnings("no-reserved-identifier") << compile::warnings("no-reserved-module-identifier")
-                << compile::custom(std::string("-fprebuilt-module-path=") + build_directory.string())
-                << compile::custom("--precompile")
-                << compile::custom(i.string()) << compile::archive(o);
+        c << compile::compiler(this->name) 
+        << compile::std_standard(defaults::std_standard);
+        for(auto const&f: this->precompile_flags)
+            c << compile::custom(f);
+        if(i.filename() == "std.cc"&&this->module_artifact_extension == ".gcm") {
+            c << compile::custom("-fsearch-include-path")
+            << compile::compile_only()
+            << compile::custom("bits/std.cc");
+            return c.spawn(get_build_log());
+        }
+        c << compile::warnings(defaults::warnings)
+        << compile::verbose(options::compile_verbose);
+        
+        c << compile::custom(i.string());
+        if(this->module_precompile_output)
+            c << compile::archive(o);
 
         printlnv("Compiling: {:}: {:}", i.string(), c.get());
         return c.spawn(get_build_log());
@@ -64,7 +81,9 @@ struct compiler {
 
     auto link(std::filesystem::path t, auto const&objects, auto const&libraries) const {
         compile::command c;
-        c << compile::compiler(this->name) << compile::std_lib(defaults::std_lib);
+        c << compile::compiler(this->name);
+        for(auto const&f: this->link_flags)
+            c << compile::custom(f);
         c << compile::libraries(this->project_libraries);
         for(auto const&o: objects)
             c << compile::custom(o);
@@ -94,12 +113,50 @@ struct compiler {
 
     auto find_module(std::filesystem::path p) {
         auto find_file = [&](auto const&e){return p.filename() == e.path().filename() && e.is_regular_file();};
-        std::list<std::filesystem::path> res{std::from_range,
-                std::filesystem::recursive_directory_iterator(this->modules_directory, std::filesystem::directory_options::skip_permission_denied)
+        std::list<std::filesystem::path> res;
+        if(p.filename() == "std.cppm"&&this->module_artifact_extension == ".gcm") {
+            for(auto const&d: this->hlist) {
+                auto candidate = d/"bits"/"std.cc";
+                if(std::filesystem::is_regular_file(candidate)) {
+                    res.push_back(candidate);
+                    return res;
+                }
+            }
+        }
+        auto search_directory = [&](auto const&directory, bool recursive) {
+            if(!std::filesystem::is_directory(directory))
+                return;
+            auto candidate = directory/p.filename();
+            if(std::filesystem::is_regular_file(candidate))
+                res.push_back(std::move(candidate));
+            if(!recursive)
+                return;
+            auto files = std::filesystem::recursive_directory_iterator(
+                    directory, std::filesystem::directory_options::skip_permission_denied)
                 | std::views::filter(find_file)
-                | std::views::transform(&std::filesystem::directory_entry::path)
-            };
+                | std::views::transform(&std::filesystem::directory_entry::path);
+            std::ranges::copy(files, std::back_inserter(res));
+        };
+        for(auto const&directory: this->hlist) {
+            auto is_cpp_include = directory.filename().string().starts_with("c++");
+            search_directory(directory, is_cpp_include);
+        }
+        if(!this->modules_directory.empty() && std::filesystem::exists(this->modules_directory)) {
+            search_directory(this->modules_directory, true);
+        }
+        res.sort();
+        res.unique();
         return res;
+    }
+
+    auto module_artifact_path(std::filesystem::path module) const {
+        if(module.filename() == "std.cc"&&this->module_artifact_extension == ".gcm")
+            return this->module_artifact_directory/"std.gcm";
+        if(module.extension() == defaults::module_extension)
+            module.replace_extension(this->module_artifact_extension);
+        else
+            module += this->module_artifact_extension;
+        return this->module_artifact_directory/module;
     }
 
     auto search_includes(std::filesystem::path p) {
@@ -115,6 +172,13 @@ struct compiler {
     }
 
     std::string name;
+    std::vector<std::string> compile_flags;
+    std::vector<std::string> link_flags;
+    std::vector<std::string> precompile_flags;
+    std::vector<std::string> dependency_flags; 
+    std::string module_artifact_extension = defaults::precompiled_module_extension;
+    std::filesystem::path module_artifact_directory;
+    bool module_precompile_output = true;
     std::filesystem::path install_directory;
     std::filesystem::path modules_directory;
     using include_directories = std::set<std::filesystem::path>;
@@ -129,6 +193,6 @@ struct compiler {
 };
 
 using available_compilers = std::list<compiler>;
-available_compilers detect_compilers(std::filesystem::path build_directory);
+available_compilers detect_compilers(std::filesystem::path build_directory, std::string_view compiler_name);
 
 } // environment

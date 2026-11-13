@@ -1,6 +1,5 @@
-import std; //almakorte
-
 #include <cstdlib>
+import std; //almakorte
 
 #include "config.h"
 #include "environment.h"
@@ -55,14 +54,18 @@ struct compiler_clang {
         std::ifstream is(p);
         std::regex bindir_regex(std::string("InstalledDir:\\s*") + defaults::path_regex + "\\s*.*");
         std::smatch m;
+        std::filesystem::path install_directory;
         auto i = std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l) {
-                    return std::regex_match(l, m, bindir_regex);
+                    if(!std::regex_match(l, m, bindir_regex))
+                        return false;
+                    install_directory = m[1].str();
+                    return true;
                 });
-        if(m.size() != 2) {
+        if(i == textfile::in_it() || install_directory.empty()) {
             printlnv("Could not locate installation directory");
             return std::make_tuple(std::filesystem::path{}, std::filesystem::path{});
         }
-        std::filesystem::path id{std::filesystem::path{m[1]}.parent_path()};
+        std::filesystem::path id{install_directory.parent_path()};
         std::filesystem::path md = id / "share";
 
         return std::make_tuple(id, md);
@@ -70,7 +73,19 @@ struct compiler_clang {
 
 
     auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
-        compiler c{"clang++"};
+        compiler c{defaults::clang_name};
+        c.compile_flags = {"-stdlib=" + std::string(defaults::std_lib), "-fprebuilt-module-path=" + build_directory.string()};
+
+        c.precompile_flags = {
+            "-stdlib=" + std::string(defaults::std_lib),
+            "--precompile",
+            "-Wno-reserved-identifier",
+            "-Wno-reserved-module-identifier",
+            "-fprebuilt-module-path=" + build_directory.string()
+        };
+
+        c.link_flags = {"-stdlib=" + std::string(defaults::std_lib)};
+        c.module_artifact_directory = build_directory;
 
         build::executor x;
 
@@ -104,8 +119,10 @@ struct compiler_clang {
                     printlnv("Compiler command returned an error, assuming invalid");
                     return r;
                 }
-                std::tie(c.qlist, c.hlist) = scan_details(details_file);
                 return EXIT_SUCCESS; 
+            }, [&]() {
+                std::tie(c.qlist, c.hlist) = scan_details(details_file);
+                return EXIT_SUCCESS;
             });
         x.add_dependency(details_file, {test_file});
         if(x.build())
@@ -115,15 +132,146 @@ struct compiler_clang {
     }
 };
 
-using supported_compilers = std::tuple<compiler_clang>;
+struct compiler_gcc {
+    auto scan_details(std::filesystem::path p) {
+        compiler::include_directories qlist;
+        compiler::include_directories hlist;
 
-available_compilers detect_compilers(std::filesystem::path build_directory) {
+        static std::regex include_regex(std::string("^\\s*") + defaults::path_regex + "\\s*.*");
+        auto convert_and_add = [&](auto const&l, auto &container){
+                std::smatch m;
+                std::regex_match(l, m, include_regex);
+                if(m.size() != 2)
+                    printlnv("Unrecognized include path: {:}", l.string());
+                else
+                    container.insert(std::filesystem::weakly_canonical({m[1]}));
+            };
+
+        std::ifstream is(p);
+        std::regex qregex(".*include.*\"\\.\\.\\.\".*search starts here:.*");
+        auto q = std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l){return std::regex_match(l.string(), qregex);});
+        if(q == textfile::in_it()) {
+            printlnv("Could not locate search list in compiler output");
+            return std::make_tuple(qlist, hlist);
+        }
+
+        std::regex hregex(".*include.*<\\.\\.\\.>.*search starts here:.*");
+        auto h = std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l){
+                    auto match = std::regex_match(l.string(), hregex);
+                    if(!match)
+                        convert_and_add(l, qlist);
+                    return match;
+                });
+        if(h == textfile::in_it()) {
+            printlnv("Could not locate hlist in compiler output");
+            return std::make_tuple(qlist, hlist);
+        }
+
+        std::regex eregex(".*End of search list\\..*");
+        auto i =std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l){
+                    auto match = std::regex_match(l.string(), eregex);
+                    if(!match)
+                        convert_and_add(l, hlist);
+                    return match;
+                });
+
+        return std::make_tuple(qlist, hlist);
+    }
+
+    static auto scan_info(std::filesystem::path p) {
+        std::ifstream is(p);
+        std::regex install_regex(std::string("install:\\s*") + defaults::path_regex + "\\s*.*");
+        std::smatch m;
+        std::filesystem::path install_directory;
+        auto i = std::ranges::find_if(textfile::in_it(is), textfile::in_it(), [&](auto const&l) {
+                    if(!std::regex_match(l, m, install_regex))
+                        return false;
+                    install_directory = m[1].str();
+                    return true;
+                });
+        if(i == textfile::in_it() || install_directory.empty()) {
+            printlnv("Could not locate GCC installation directory");
+            return std::make_tuple(std::filesystem::path{}, std::filesystem::path{});
+        }
+
+        return std::make_tuple(install_directory, install_directory);
+    }
+
+    auto detect(std::filesystem::path build_directory) -> std::expected<compiler, std::string> {
+        compiler c{defaults::gcc_name};
+        
+        c.module_artifact_extension = ".gcm";
+        c.module_artifact_directory = build_directory / "gcm.cache";
+        c.module_precompile_output = false;
+        c.native_std_module = true;
+        auto module_mapper = std::format("'-fmodule-mapper=|@g++-mapper-server -r {}'", c.module_artifact_directory.string());
+        c.compile_flags = {"-fmodules", "-x c++", module_mapper};
+        c.precompile_flags = {"-fmodules", "-x c++", "-fmodule-only", module_mapper};
+        c.dependency_flags = {"-fmodules", "-Mno-modules", module_mapper};
+  
+
+        build::executor x;
+
+        auto info_file = build_directory/defaults::compiler_info_file;
+
+        x.add_build_command(info_file, [&](){
+                auto r = std::system(std::format("{:} -print-search-dirs {:}", c.name, os::redirect_to(info_file)).c_str());
+                if(WEXITSTATUS(r)) {
+                    printlnv("Compiler binary {:} not found", c.name);
+                    return r;
+                }
+                return EXIT_SUCCESS;
+            }, [&]() {
+                std::tie(c.install_directory, c.modules_directory) = scan_info(info_file);
+                return EXIT_SUCCESS;
+            });
+
+        auto test_file = build_directory/defaults::compiler_test_file;
+        auto test_output_file = test_file;
+        test_output_file.replace_extension(defaults::object_extension);
+        x.add_build_command(test_file, [&]() {
+                return textfile::touch(test_file);
+            });
+        x.add_dependency(test_file, {info_file});
+
+        auto details_file = build_directory/defaults::compiler_details_file;
+        x.add_build_command(details_file, [&]() {
+                auto r = c.invoke(details_file, compile::custom("-x c++"),
+                    compile::custom("-v"), compile::custom(test_file), compile::archive(test_output_file));
+                if(WEXITSTATUS(r)) {
+                    printlnv("Compiler command returned an error, assuming invalid");
+                    return r;
+                }
+                return EXIT_SUCCESS;
+            }, [&]() {
+                std::tie(c.qlist, c.hlist) = scan_details(details_file);
+                return EXIT_SUCCESS;
+            });
+        x.add_dependency(details_file, {test_file});
+        if(x.build())
+            return std::unexpected("Failed to detect compiler");
+
+        return c;
+    }
+
+
+    
+};
+
+
+available_compilers detect_compilers(std::filesystem::path build_directory, std::string_view compiler_name) {
     available_compilers cs;
-    std::apply([&](auto c) {
-            auto r = c.detect(build_directory);
-            if(r)
-                cs.push_back(*r);
-        }, supported_compilers{});
+    auto detect = [&](auto c) {
+        auto r = c.detect(build_directory);
+        if(r) {
+            printlnv("Detected compiler: {:}", r->name);
+            cs.push_back(*r);
+        }
+    };
+    if(compiler_name == "clang")
+        detect(compiler_clang{});
+    else if(compiler_name == "gcc")
+        detect(compiler_gcc{});
     return cs;
 }
 
